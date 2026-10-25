@@ -93,6 +93,11 @@ const EN: Record<string, string> = {
   "Kalıcı sil (Geri Dönüşüm Kutusu'nu atla)":
     "Permanent delete (skip Recycle Bin)",
   "Geri Dönüşüm Kutusu'na Taşı": "Move to Recycle Bin",
+  "Kalıcı sil (Karantina'yı atla)": "Permanent delete (skip quarantine)",
+  "Karantina'ya Taşı": "Move to quarantine",
+  "Tarama tamamlanamadı": "Scan could not be completed",
+  "Secret taraması tamamlanamadı": "Secret scan could not be completed",
+  "Bağımlılık denetimi tamamlanamadı": "Dependency audit could not be completed",
   "Kalıcı Sil": "Permanent Delete",
   "Kalıcı Sil (onayla)": "Permanent Delete (confirm)",
   "⚠ Bu işlem GERİ ALINAMAZ. Onaylamak için tekrar \"Kalıcı Sil\" butonuna bas.":

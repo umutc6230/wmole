@@ -35,12 +35,14 @@ export type Op =
 export interface Request {
   id: string;
   op: Op;
+  protocol?: 1;
   mode?: "analyze" | "clean" | "purge" | "installers" | "categories" | "large";
   paths?: string[];
   path?: string;
   targets?: string[];
   permanent?: boolean;
   dry_run?: boolean;
+  user_confirmed?: boolean;
   query?: string;
   limit?: number;
   app?: unknown;
@@ -67,6 +69,8 @@ export interface Request {
 export interface SidecarEvent {
   id: string | null;
   ev: "ready" | "started" | "progress" | "item" | "item_result" | "done" | "error";
+  ok?: boolean;
+  cancelled?: boolean;
   [key: string]: unknown;
 }
 

@@ -10,6 +10,7 @@ export type UpdatePhase =
   | "available"
   | "downloading"
   | "ready"
+  | "installing"
   | "error";
 
 export interface UpdateState {
@@ -23,6 +24,16 @@ export interface UpdateState {
   pct: number;
   setupPath: string;
   error: string;
+}
+
+interface UpdateInfoResponse {
+  available: boolean;
+  current: string;
+  latest: string;
+  notes: string;
+  download_url: string;
+  sha256_url: string;
+  size: number;
 }
 
 const init: UpdateState = {
@@ -54,9 +65,11 @@ listen<{ pct: number }>("update-progress", (e) =>
 );
 
 export async function checkForUpdate(silent = true) {
+  const active = get(update).phase;
+  if (active === "checking" || active === "downloading" || active === "installing") return;
   update.update((s) => ({ ...s, phase: "checking", error: "" }));
   try {
-    const r = await invoke<any>("check_update");
+    const r = await invoke<UpdateInfoResponse>("check_update");
     if (r.available) {
       update.set({
         ...init,
@@ -87,6 +100,7 @@ export async function checkForUpdate(silent = true) {
 
 export async function downloadUpdate() {
   const s = get(update);
+  if (s.phase === "downloading") return;
   update.update((v) => ({ ...v, phase: "downloading", pct: 0, error: "" }));
   try {
     const path = await invoke<string>("download_update", {
@@ -111,9 +125,12 @@ export async function downloadUpdate() {
 
 export async function applyUpdate() {
   const s = get(update);
+  if (s.phase !== "ready" || !s.setupPath) return;
+  update.update((value) => ({ ...value, phase: "installing", error: "" }));
   try {
     await invoke("install_update", { setupPath: s.setupPath });
   } catch (e) {
+    update.update((value) => ({ ...value, phase: "error", error: String(e) }));
     toast(tr("Kurulum başlatılamadı") + ": " + e, "err");
   }
 }

@@ -62,12 +62,15 @@
   async function del(permanent: boolean) {
     confirmOpen = false;
     const targets = selected.map((i) => i.path);
+    const deleted = new Set<string>();
     let ok = 0, err = 0;
-    await request({ op: "delete", targets, permanent }, (e) => {
-      if (e.ev === "item_result") e.ok ? ok++ : err++;
+    await request({ op: "delete", targets, permanent, user_confirmed: true }, (e) => {
+      if (e.ev === "item_result") {
+        if (e.ok) { ok++; deleted.add(String(e.path)); } else err++;
+      }
       if (e.ev === "progress") progress = { done: e.done as number, total: e.total as number, label: String(e.label ?? "") };
     });
-    items = items.filter((i) => !targets.includes(i.path));
+    items = items.filter((i) => !deleted.has(i.path));
     progress = { done: 0, total: 0, label: "" };
     toast(`${ok} ${tr("kopya silindi")}${err ? `, ${err} ${tr("hata")}` : ""}`, err ? "err" : "ok");
   }

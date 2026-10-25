@@ -46,20 +46,26 @@
     scanning = true;
     progress = { done: 0, total: 0, label: "" };
     const buf: ScanItem[] = [];
-    await request({ op: "scan", mode: mode as any }, (e: SidecarEvent) => {
-      if (e.ev === "started") activeId = String(e.id);
-      if (e.ev === "item") buf.push(e as unknown as ScanItem);
-      if (e.ev === "progress")
-        progress = {
-          done: e.done as number,
-          total: e.total as number,
-          label: String(e.label ?? ""),
-        };
-    });
-    items = buf;
-    scanning = false;
-    activeId = null;
-    progress = { done: 0, total: 0, label: "" };
+    try {
+      const done = await request({ op: "scan", mode: mode as any }, (e: SidecarEvent) => {
+        if (e.ev === "started") activeId = String(e.id);
+        if (e.ev === "item") buf.push(e as unknown as ScanItem);
+        if (e.ev === "progress")
+          progress = {
+            done: e.done as number,
+            total: e.total as number,
+            label: String(e.label ?? ""),
+          };
+      });
+      items = buf;
+      if (!done.ok && !done.cancelled) toast(tr("Tarama tamamlanamadı"), "err");
+    } catch {
+      toast(tr("Tarama tamamlanamadı"), "err");
+    } finally {
+      scanning = false;
+      activeId = null;
+      progress = { done: 0, total: 0, label: "" };
+    }
   }
 
   function toggle(it: ScanItem) {
@@ -85,11 +91,14 @@
   async function doDelete(permanent: boolean) {
     modalOpen = false;
     const targets = selected.map((i) => i.path);
+    const deleted = new Set<string>();
     let ok = 0,
       err = 0;
-    await request({ op: "delete", targets, permanent, dry_run: dryRun }, (e) => {
+    await request({ op: "delete", targets, permanent, dry_run: dryRun, user_confirmed: true }, (e) => {
       if (e.ev === "started") activeId = String(e.id);
-      if (e.ev === "item_result") e.ok ? ok++ : err++;
+      if (e.ev === "item_result") {
+        if (e.ok) { ok++; deleted.add(String(e.path)); } else err++;
+      }
       if (e.ev === "progress")
         progress = {
           done: e.done as number,
@@ -97,7 +106,7 @@
           label: String(e.label ?? ""),
         };
     });
-    if (!dryRun) items = items.filter((i) => !targets.includes(i.path));
+    if (!dryRun) items = items.filter((i) => !deleted.has(i.path));
     activeId = null;
     progress = { done: 0, total: 0, label: "" };
     const msg = `${dryRun ? tr("Dry-run:") + " " : ""}${ok} ${dryRun ? tr("önizlendi") : tr("silindi")}${err ? `, ${err} ${tr("hata")}` : ""}`;

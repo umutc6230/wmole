@@ -1,7 +1,8 @@
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::io::Write;
+use std::io::{Read, Write};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
 const GH_REPO: &str = "palamut62/wmole";
@@ -14,6 +15,23 @@ fn validate_release_url(url: &str, expected_suffix: &str) -> Result<(), String> 
     } else {
         Err("invalid-update-url".into())
     }
+}
+
+fn setup_asset_name(url: &str) -> Result<&str, String> {
+    url.rsplit('/').next().filter(|name| name.ends_with("-setup.exe"))
+        .ok_or_else(|| "invalid-update-asset-name".into())
+}
+
+fn file_sha256(path: &std::path::Path) -> Result<String, String> {
+    let mut file = std::fs::File::open(path).map_err(|e| format!("disk: {e}"))?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        let count = file.read(&mut buffer).map_err(|e| format!("disk: {e}"))?;
+        if count == 0 { break; }
+        digest.update(&buffer[..count]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
 }
 
 #[derive(Deserialize)]
@@ -117,8 +135,11 @@ pub async fn download_update(
 ) -> Result<String, String> {
     validate_release_url(&url, "-setup.exe")?;
     validate_release_url(&sha256_url, ".sha256")?;
+    let asset_name = setup_asset_name(&url)?.to_string();
     let dir = app.path().temp_dir().map_err(|e| format!("disk: {e}"))?;
-    let target = dir.join("wmole-update-setup.exe");
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("clock: {e}"))?.as_nanos();
+    let target = dir.join(format!("wmole-update-{nonce}-{}-{asset_name}", std::process::id()));
 
     let client = reqwest::Client::new();
     let resp = client
@@ -131,7 +152,8 @@ pub async fn download_update(
         .map_err(|e| format!("http: {e}"))?;
 
     // yetersiz alan / izin hatası burada yakalanır
-    let mut file = std::fs::File::create(&target).map_err(|e| format!("disk: {e}"))?;
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true)
+        .open(&target).map_err(|e| format!("disk: {e}"))?;
     let mut hasher = Sha256::new();
     let mut downloaded: u64 = 0;
     let mut last_pct: u8 = 255;
@@ -179,16 +201,17 @@ pub async fn download_update(
         .await
         .map_err(|e| format!("network: {e}"))?;
     // .sha256 formatı: "<hash>  wmole-X.Y.Z-setup.exe"
-    let expected = expected_raw
-        .split_whitespace()
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
+    let mut checksum_fields = expected_raw.split_whitespace();
+    let expected = checksum_fields.next().unwrap_or("").to_lowercase();
+    let checksum_name = checksum_fields.next().unwrap_or("").trim_start_matches('*');
 
-    if expected.is_empty() || got != expected {
+    if expected.is_empty() || got != expected || checksum_name != asset_name {
         let _ = std::fs::remove_file(&target); // bozuk dosyayı sil
-        return Err(format!("checksum-mismatch:{got}:{expected}"));
+        return Err("checksum-or-asset-mismatch".into());
     }
+
+    std::fs::write(target.with_extension("exe.sha256"), &expected)
+        .map_err(|e| format!("disk: {e}"))?;
 
     Ok(target.to_string_lossy().to_string())
 }
@@ -198,18 +221,25 @@ pub async fn download_update(
 /// sonrası uygulamayı yeniden başlatır.
 #[tauri::command]
 pub fn install_update(app: AppHandle, setup_path: String) -> Result<(), String> {
-    let expected = app
+    let expected_dir = app
         .path()
         .temp_dir()
-        .map_err(|e| format!("disk: {e}"))?
-        .join("wmole-update-setup.exe");
+        .map_err(|e| format!("disk: {e}"))?;
     let requested = std::fs::canonicalize(&setup_path).map_err(|_| "setup-missing")?;
-    let expected = std::fs::canonicalize(expected).map_err(|_| "setup-missing")?;
-    if requested != expected {
+    let parent = requested.parent().ok_or("invalid-setup-path")?;
+    let expected_dir = std::fs::canonicalize(expected_dir).map_err(|_| "setup-missing")?;
+    let filename = requested.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    if parent != expected_dir || !filename.starts_with("wmole-update-") || !filename.ends_with("-setup.exe") {
         return Err("invalid-setup-path".into());
     }
     if !requested.is_file() {
         return Err("setup-missing".into());
+    }
+    let expected_hash = std::fs::read_to_string(requested.with_extension("exe.sha256"))
+        .map_err(|_| "verification-missing")?;
+    let actual_hash = file_sha256(&requested)?;
+    if !actual_hash.eq_ignore_ascii_case(expected_hash.trim()) {
+        return Err("checksum-changed-before-install".into());
     }
     std::process::Command::new(&requested)
         .arg("/S")

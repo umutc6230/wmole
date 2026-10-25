@@ -71,10 +71,13 @@
   async function quickClean(permanent: boolean) {
     confirmOpen = false;
     const targets = chosen.map((i) => i.path);
+    const deleted = new Set<string>();
     let ok = 0,
       err = 0;
-    await request({ op: "delete", targets, permanent }, (e) => {
-      if (e.ev === "item_result") e.ok ? ok++ : err++;
+    await request({ op: "delete", targets, permanent, user_confirmed: true }, (e) => {
+      if (e.ev === "item_result") {
+        if (e.ok) { ok++; deleted.add(String(e.path)); } else err++;
+      }
       if (e.ev === "progress")
         progress = {
           done: e.done as number,
@@ -83,8 +86,8 @@
         };
     });
     progress = { done: 0, total: 0, label: "" };
-    scanItems = [];
-    scanned = false;
+    scanItems = scanItems.filter((item) => !deleted.has(item.path));
+    scanned = scanItems.length > 0;
     const msg = `${tr("Hızlı temizlik:")} ${ok} ${tr("öğe silindi")}${err ? `, ${err} ${tr("hata")}` : ""}`;
     toast(msg, err ? "err" : "ok");
     if (ok > 0) notify("wmole", msg);

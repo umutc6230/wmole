@@ -16,6 +16,24 @@
   import { t } from "$lib/i18n";
   let permanent = $state(false);
   let confirmPermanent = $state(false);
+  let submitting = $state(false);
+  let wasOpen = $state(false);
+  let modalElement = $state<HTMLDivElement>();
+  let cancelButton = $state<HTMLButtonElement>();
+  let returnFocus: HTMLElement | null = null;
+
+  $effect(() => {
+    if (open && !wasOpen) {
+      returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      permanent = false;
+      confirmPermanent = false;
+      submitting = false;
+      queueMicrotask(() => cancelButton?.focus());
+    } else if (!open && wasOpen) {
+      queueMicrotask(() => returnFocus?.focus());
+    }
+    wasOpen = open;
+  });
 
   function fmt(n: number) {
     const u = ["B", "KB", "MB", "GB", "TB"];
@@ -28,18 +46,52 @@
     return v.toFixed(1) + " " + u[i];
   }
   function confirm() {
+    if (submitting) return;
     if (permanent && !confirmPermanent) {
       confirmPermanent = true;
       return;
     }
+    submitting = true;
     onConfirm(permanent);
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && !submitting) {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    if (!modalElement) return;
+    const focusable = [...modalElement.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )];
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 </script>
 
 {#if open}
   <div class="backdrop" onclick={onCancel} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
-      <h3>{$t("Silme Onayı")}</h3>
+    <div
+      class="modal"
+      bind:this={modalElement}
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={handleKeydown}
+      role="dialog"
+      tabindex="-1"
+      aria-modal="true"
+      aria-labelledby="delete-confirm-title"
+    >
+      <h3 id="delete-confirm-title">{$t("Silme Onayı")}</h3>
       <p>{count} {$t("öğe")} · {fmt(bytes)}</p>
       <label class="opt">
         <input
@@ -47,7 +99,7 @@
           bind:checked={permanent}
           onchange={() => (confirmPermanent = false)}
         />
-        {$t("Kalıcı sil (Geri Dönüşüm Kutusu'nu atla)")}
+        {$t("Kalıcı sil (Karantina'yı atla)")}
       </label>
       {#if permanent && confirmPermanent}
         <p class="warn">
@@ -55,13 +107,13 @@
         </p>
       {/if}
       <div class="actions">
-        <button class="ghost" onclick={onCancel}>{$t("Vazgeç")}</button>
-        <button class:danger={permanent} onclick={confirm}>
+        <button bind:this={cancelButton} class="ghost" onclick={onCancel} disabled={submitting}>{$t("Vazgeç")}</button>
+        <button class:danger={permanent} onclick={confirm} disabled={submitting}>
           {permanent
             ? confirmPermanent
               ? $t("Kalıcı Sil (onayla)")
               : $t("Kalıcı Sil")
-            : $t("Geri Dönüşüm Kutusu'na Taşı")}
+            : $t("Karantina'ya Taşı")}
         </button>
       </div>
     </div>

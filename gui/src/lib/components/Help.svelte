@@ -13,7 +13,7 @@
             ["Gösterge Paneli", "Sistem özeti, temizlik analizi ve geçmiş. Tek tıkla 'Hızlı Temizle'."],
             ["Gezgin", "Dosya sistemini canlı boyutlarla gez; klasöre gir, yukarı çık, büyük dosyaları, sürücüleri ve treemap'i gör."],
             ["Kategoriler", "Disk kullanımını kategoriye göre (cache, tarayıcı, sistem) listele."],
-            ["Temizle", "Güvenli temizlik kategorilerini tara ve Geri Dönüşüm Kutusu'na taşı."],
+            ["Temizle", "Güvenli temizlik kategorilerini tara ve geri alınabilir karantinaya taşı."],
             ["Artıklar", "node_modules / build / dist gibi geliştirici artıklarını toplu sil."],
             ["Kurulumlar", "İndirilenler ve Masaüstü'ndeki eski kurulum dosyalarını bul."],
             ["Yinelenenler", "Boyut + MD5 ile yinelenen dosyaları bul."],
@@ -33,7 +33,7 @@
         {
           title: "Güvenlik",
           items: [
-            ["Varsayılan: Geri Dönüşüm Kutusu", "Silmeler varsayılan olarak Geri Dönüşüm Kutusu'na gider; kalıcı silme ek onay gerektirir."],
+            ["Varsayılan: Karantina", "Güvenli silmeler varsayılan olarak geri alınabilir karantinaya gider; kalıcı silme ek onay gerektirir."],
             ["Korumalı yollar", "Sürücü kökleri, C:\\Windows, Program Files, kullanıcı profili ve .git içeren yollar engellenir."],
             ["İptal edilebilir", "Uzun işlemler alt şeritteki 'İptal' ile durdurulabilir; arayüz hiç donmaz."],
             ["İşlem günlüğü", "Tüm silmeler ~/.wmole/logs/operations.log dosyasına yazılır."],
@@ -62,7 +62,7 @@
             ["Dashboard", "System overview, cleanup analysis & history. One-click 'Quick Clean'."],
             ["Analyze", "Browse the filesystem with live sizes; enter folders, go up, view large files, drives and treemap."],
             ["Categories", "List disk usage by category (cache, browser, system)."],
-            ["Clean", "Scan safe cleanup categories and move to Recycle Bin."],
+            ["Clean", "Scan safe cleanup categories and move them to recoverable quarantine."],
             ["Purge", "Bulk-delete developer artifacts like node_modules / build / dist."],
             ["Installers", "Find old setup files in Downloads and Desktop."],
             ["Duplicates", "Find duplicate files by size + MD5."],
@@ -82,7 +82,7 @@
         {
           title: "Safety",
           items: [
-            ["Default: Recycle Bin", "Deletes go to the Recycle Bin by default; permanent delete needs extra confirmation."],
+            ["Default: Quarantine", "Safe deletions go to recoverable quarantine by default; permanent delete needs extra confirmation."],
             ["Protected paths", "Drive roots, C:\\Windows, Program Files, user profile and paths containing .git are blocked."],
             ["Cancellable", "Long operations can be stopped via 'Cancel' in the status bar; the UI never freezes."],
             ["Operation log", "All deletions are written to ~/.wmole/logs/operations.log."],

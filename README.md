@@ -11,7 +11,7 @@ Windows-first port of [tw93/Mole](https://github.com/tw93/Mole): a terminal main
 [Website](https://wmole.vercel.app) · [Docs](#table-of-contents) · [Upstream Mole](https://github.com/tw93/Mole)
 
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
-![Python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/python-3.10--3.12-3776AB?logo=python&logoColor=white)
 ![UI](https://img.shields.io/badge/ui-rich-20232A)
 ![Safety](https://img.shields.io/badge/delete-default%20to%20quarantine-2E7D32)
 
@@ -32,6 +32,8 @@ Windows-first port of [tw93/Mole](https://github.com/tw93/Mole): a terminal main
 13. [Command Input And Context Keys](#command-input-and-context-keys)
 14. [Testing](#testing)
 15. [Roadmap](#roadmap)
+16. [Desktop Application](#desktop-application)
+17. [Support](#support)
 
 ## Features
 
@@ -121,6 +123,31 @@ py -m pip install -r requirements.txt
 run.bat
 ```
 
+## Desktop Application
+
+The supported packaged target is Windows 10 22H2 or Windows 11 on x86-64, with
+WebView2 and a local NTFS volume. Standard-user operation is the default;
+administrator-only maintenance actions state that requirement before execution.
+Local exFAT/removable volumes and network paths are best-effort because their
+locking, permissions and atomic rename behavior can differ. See
+[`docs/supported-environments.md`](docs/supported-environments.md) for the test matrix.
+
+Build the Svelte frontend and Tauri application from a clean checkout:
+
+```powershell
+py -3.12 -m pip install -r requirements-dev.txt
+Set-Location gui
+npm ci
+npm run check
+npm run build
+cargo check --manifest-path src-tauri/Cargo.toml
+npm run tauri build
+```
+
+Safe deletion moves content into `%USERPROFILE%\.wmole\quarantine`. Each item has
+an atomic index record and its own recovery manifest. The Security Center lists
+recoverable items and restores only when the original destination is free.
+
 ## Usage Examples
 
 ```cmd
@@ -207,7 +234,19 @@ Context keys: Up/Down move | Enter open/run | Space pick | D delete | K permanen
 ```cmd
 py -m py_compile mole.py
 py -m unittest discover -s tests
+cd gui
+npm ci
+npm run check
+npm run build
+cargo check --manifest-path src-tauri/Cargo.toml
 ```
+
+## Support
+
+For corrupt state, a missing sidecar or an update failure, follow
+[`docs/support.md`](docs/support.md). Review logs before sharing them because paths
+can contain account or project names. Product owner: [Umut Çelik](https://github.com/palamut62)
+([X](https://x.com/palamut62)).
 
 ## Roadmap
 

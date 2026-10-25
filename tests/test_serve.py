@@ -46,6 +46,36 @@ class ServePingStatusTest(unittest.TestCase):
         self.assertTrue(done, msg=err)
         self.assertIn("payload", done[0])
 
+    def test_rejects_non_object_request(self):
+        events, _ = _run_serve([["not", "an", "object"]])
+        self.assertTrue(any(e.get("code") == "invalid_request" for e in events))
+
+    def test_rejects_unknown_protocol(self):
+        events, _ = _run_serve([{"id": "bad", "op": "ping", "protocol": 99}])
+        done = [e for e in events if e.get("id") == "bad" and e["ev"] == "done"]
+        self.assertTrue(done and not done[0]["ok"])
+
+    def test_rejects_oversized_target_list(self):
+        events, _ = _run_serve([{"id": "huge", "op": "delete",
+                                  "targets": ["x"] * 10001}])
+        self.assertTrue(any(e.get("code") == "invalid_request" for e in events))
+
+    def test_handler_emits_only_one_terminal_event(self):
+        events = []
+        lock = mock.MagicMock()
+
+        def emits_done_then_raises(req, emit, cancel):
+            emit({"id": req["id"], "ev": "done", "ok": True})
+            raise RuntimeError("late failure")
+
+        with mock.patch.object(mole, "_serve_scan", side_effect=emits_done_then_raises):
+            mole._serve_handle(
+                {"id": "once", "op": "scan"}, events.append, {"once": mock.Mock()}, lock,
+                mock.Mock(),
+            )
+        terminal = [event for event in events if event.get("ev") == "done"]
+        self.assertEqual(terminal, [{"id": "once", "ev": "done", "ok": True}])
+
 
 class ServeScanTest(unittest.TestCase):
     def test_analyze_scan_emits_items_and_done(self):
@@ -87,6 +117,43 @@ class ServeDeleteTest(unittest.TestCase):
         self.assertTrue(results, msg=err)
         self.assertFalse(results[0]["ok"])
         self.assertTrue(any(e["ev"] == "done" for e in ids))
+
+    def test_user_confirmed_delete_passes_git_override_only_for_that_request(self):
+        events = []
+        with mock.patch.object(mole, "delete_path", return_value=None) as delete:
+            mole._serve_delete(
+                {
+                    "id": "confirmed",
+                    "targets": [r"C:\work\target"],
+                    "permanent": True,
+                    "user_confirmed": True,
+                },
+                events.append,
+                mock.Mock(is_set=mock.Mock(return_value=False)),
+            )
+        self.assertTrue(delete.call_args.kwargs["allow_git_changes"])
+        self.assertTrue(any(event.get("ev") == "done" for event in events))
+
+    def test_packaged_style_confirmed_request_deletes_dirty_git_artifact(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = pathlib.Path(td)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            artifact = root / "target"
+            artifact.mkdir()
+            (artifact / "build.bin").write_bytes(b"build")
+            events, err = _run_serve([
+                {
+                    "id": "force-purge",
+                    "op": "delete",
+                    "targets": [str(artifact)],
+                    "permanent": True,
+                    "user_confirmed": True,
+                    "protocol": 1,
+                }
+            ])
+            result = [e for e in events if e.get("id") == "force-purge" and e["ev"] == "item_result"]
+            self.assertTrue(result and result[0]["ok"], msg=err)
+            self.assertFalse(artifact.exists())
 
 
 class ServeParityTest(unittest.TestCase):

@@ -20,6 +20,7 @@ Safety: deletes go to the Recycle Bin by default (send2trash).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import hmac
 import json
@@ -93,7 +94,7 @@ else:  # pragma: no cover
 
 
 # ---------- Version ----------
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 GITHUB_REPO = "palamut62/wmole"
 AUTO_UPDATE_INTERVAL = 6 * 3600  # seconds between background checks
 
@@ -117,6 +118,7 @@ QUARANTINE_DIR = WMOLE_DIR / "quarantine"
 QUARANTINE_INDEX = QUARANTINE_DIR / "index.json"
 _SECURITY_LOG_LOCK = threading.Lock()
 _SECURITY_CHAIN_STATE: dict[str, str] = {}
+_QUARANTINE_LOCK = threading.RLock()
 UPDATE_CHECK_FILE = WMOLE_DIR / "update_check.json"
 PENDING_UPDATE_FILE = WMOLE_DIR / "pending_update.json"
 
@@ -134,7 +136,8 @@ def free_space_gb() -> float:
 
 
 def dir_size(path: Path, on_progress=None, max_seconds: Optional[float] = None,
-             max_files: Optional[int] = None) -> int:
+             max_files: Optional[int] = None,
+             cancel: threading.Event | None = None) -> int:
     total = 0
     last_emit = 0
     started = time.time()
@@ -146,6 +149,8 @@ def dir_size(path: Path, on_progress=None, max_seconds: Optional[float] = None,
         try:
             with os.scandir(p) as it:
                 for entry in it:
+                    if cancel is not None and cancel.is_set():
+                        return False
                     try:
                         if entry.is_dir(follow_symlinks=False):
                             if not walk(entry.path):
@@ -659,20 +664,195 @@ def git_delete_risk(path: Path) -> str:
 
 
 def _quarantine_entries() -> list[dict]:
+    if not path_exists(QUARANTINE_INDEX):
+        return []
     try:
         data = json.loads(QUARANTINE_INDEX.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"quarantine index is unreadable: {exc}") from exc
+    if not isinstance(data, list):
+        raise ValueError("quarantine index is invalid")
+    return data
+
+
+@contextlib.contextmanager
+def _quarantine_guard():
+    """Serialize quarantine metadata changes across threads and Windows processes."""
+    with _QUARANTINE_LOCK:
+        QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
+        lock_path = QUARANTINE_DIR / ".index.lock"
+        with lock_path.open("a+b") as lock_file:
+            if os.name == "nt":
+                lock_file.seek(0, os.SEEK_END)
+                if lock_file.tell() == 0:
+                    lock_file.write(b"\0")
+                    lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                if os.name == "nt":
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 def _save_quarantine_entries(entries: list[dict]) -> None:
     QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
-    QUARANTINE_INDEX.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp = QUARANTINE_INDEX.with_name(
+        f"{QUARANTINE_INDEX.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+    )
+    try:
+        tmp.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, QUARANTINE_INDEX)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
-def quarantine_path(path: Path, size: int = 0) -> str | None:
-    risk = git_delete_risk(path)
+def _write_quarantine_manifest(target_dir: Path, entry: dict) -> None:
+    manifest = target_dir / "entry.json"
+    tmp = target_dir / "entry.json.tmp"
+    tmp.write_text(json.dumps(entry, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, manifest)
+
+
+def _content_fingerprint(path: Path) -> tuple[int, str]:
+    """Return byte count and a deterministic SHA-256 for a file or directory tree."""
+    digest = hashlib.sha256()
+    total = 0
+    if path.is_file() or path.is_symlink():
+        with open(path, "rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                total += len(chunk)
+                digest.update(chunk)
+        return total, digest.hexdigest()
+    for item in sorted(path.rglob("*"), key=lambda row: str(row.relative_to(path)).casefold()):
+        relative = item.relative_to(path).as_posix().encode("utf-8", errors="surrogatepass")
+        digest.update(relative)
+        if item.is_symlink():
+            digest.update(os.readlink(item).encode("utf-8", errors="surrogatepass"))
+        elif item.is_file():
+            with open(item, "rb") as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    total += len(chunk)
+                    digest.update(chunk)
+    return total, digest.hexdigest()
+
+
+def _move_into_quarantine(source: Path, target: Path) -> None:
+    """Rename on one volume; copy, verify and only then remove across volumes."""
+    source_device = source.stat(follow_symlinks=False).st_dev
+    target_device = target.parent.stat().st_dev
+    if source_device == target_device:
+        shutil.move(str(source), str(target))
+        return
+
+    temporary = target.with_name(f"{target.name}.copying")
+    if source.is_dir() and not source.is_symlink():
+        shutil.copytree(source, temporary, symlinks=True)
+    else:
+        shutil.copy2(source, temporary, follow_symlinks=False)
+    try:
+        if _content_fingerprint(source) != _content_fingerprint(temporary):
+            raise OSError("cross-volume copy verification failed")
+        os.replace(temporary, target)
+        if source.is_dir() and not source.is_symlink():
+            shutil.rmtree(source)
+        else:
+            source.unlink()
+    except Exception:
+        if temporary.is_dir() and not temporary.is_symlink():
+            shutil.rmtree(temporary, ignore_errors=True)
+        else:
+            temporary.unlink(missing_ok=True)
+        raise
+
+
+def _valid_quarantine_entry(entry: object) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    entry_id = entry.get("id")
+    stored = entry.get("stored")
+    original = entry.get("original")
+    if not isinstance(entry_id, str) or not re.fullmatch(r"[0-9]+-[0-9a-f]{8}", entry_id):
+        return False
+    if not isinstance(stored, str) or not isinstance(original, str):
+        return False
+    try:
+        Path(stored).resolve().relative_to(QUARANTINE_DIR.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def reconcile_quarantine() -> dict[str, int]:
+    """Recover interrupted moves and remove stale metadata without deleting user data."""
+    recovered = stale = invalid = 0
+    migrated = False
+    with _quarantine_guard():
+        entries = _quarantine_entries()
+        valid_entries = [entry for entry in entries if _valid_quarantine_entry(entry)]
+        invalid += len(entries) - len(valid_entries)
+        by_id = {entry["id"]: entry for entry in valid_entries}
+
+        # Upgrade legacy index-only entries without changing their identity or data.
+        for entry in valid_entries:
+            target_dir = QUARANTINE_DIR / entry["id"]
+            if path_exists(Path(entry["stored"])) and not path_exists(target_dir / "entry.json"):
+                entry["state"] = entry.get("state") or "committed"
+                _write_quarantine_manifest(target_dir, entry)
+                migrated = True
+
+        for target_dir in QUARANTINE_DIR.iterdir():
+            if not target_dir.is_dir():
+                continue
+            manifest_path = target_dir / "entry.json"
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not _valid_quarantine_entry(manifest):
+                invalid += 1
+                continue
+            stored = Path(manifest["stored"])
+            original = Path(manifest["original"])
+            if path_exists(stored) and manifest["id"] not in by_id:
+                manifest["state"] = "recoverable"
+                by_id[manifest["id"]] = manifest
+                recovered += 1
+            elif not path_exists(stored) and path_exists(original):
+                if manifest["id"] in by_id:
+                    by_id.pop(manifest["id"], None)
+                    stale += 1
+
+        normalized = list(by_id.values())
+        if migrated or normalized != entries:
+            if path_exists(QUARANTINE_INDEX):
+                backup = QUARANTINE_INDEX.with_suffix(".json.bak")
+                if not path_exists(backup):
+                    shutil.copy2(QUARANTINE_INDEX, backup)
+            _save_quarantine_entries(normalized)
+    if recovered or stale or invalid:
+        log_security_event("quarantine-reconciled", {
+            "recovered": recovered, "stale": stale, "invalid": invalid,
+        })
+    return {"recovered": recovered, "stale": stale, "invalid": invalid}
+
+
+def deletion_block_reason(path: Path, allow_git_changes: bool = False) -> str:
+    """Return the common safety reason that blocks every deletion backend."""
+    if is_protected_path(path):
+        return "protected path"
+    if allow_git_changes:
+        return ""
+    return git_delete_risk(path)
+
+
+def quarantine_path(path: Path, size: int = 0, allow_git_changes: bool = False) -> str | None:
+    risk = deletion_block_reason(path, allow_git_changes=allow_git_changes)
     if risk:
         log_security_event("git-delete-blocked", {"path": str(path), "reason": risk})
         return risk
@@ -681,34 +861,64 @@ def quarantine_path(path: Path, size: int = 0) -> str | None:
     entry_id = f"{int(time.time())}-{secrets.token_hex(4)}"
     target_dir = QUARANTINE_DIR / entry_id
     target = target_dir / path.name
+    entry = {
+        "id": entry_id, "original": str(path), "stored": str(target),
+        "size": size, "created": int(time.time()), "name": path.name,
+        "state": "prepared",
+    }
+    moved = False
     try:
         target_dir.mkdir(parents=True, exist_ok=False)
-        shutil.move(str(path), str(target))
-        entries = _quarantine_entries()
-        entries.append({
-            "id": entry_id, "original": str(path), "stored": str(target),
-            "size": size, "created": int(time.time()), "name": path.name,
-        })
-        _save_quarantine_entries(entries)
+        _write_quarantine_manifest(target_dir, entry)
+        _move_into_quarantine(path, target)
+        moved = True
+        entry["state"] = "moving"
+        _write_quarantine_manifest(target_dir, entry)
+        with _quarantine_guard():
+            entries = _quarantine_entries()
+            entry["state"] = "committed"
+            entries.append(entry)
+            _save_quarantine_entries(entries)
+            _write_quarantine_manifest(target_dir, entry)
         log_operation("delete-quarantine", path, size=size, result=entry_id)
         return None
     except Exception as exc:
-        shutil.rmtree(target_dir, ignore_errors=True)
+        if moved and path_exists(target):
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(target), str(path))
+                shutil.rmtree(target_dir, ignore_errors=True)
+                return f"quarantine metadata failed; original restored: {exc}"
+            except Exception as rollback_exc:
+                return (
+                    f"quarantine metadata failed; file preserved at {target}; "
+                    f"restore failed: {rollback_exc}"
+                )
+        if not moved:
+            shutil.rmtree(target_dir, ignore_errors=True)
         return f"quarantine: {exc}"
 
 
 def restore_quarantine(entry_id: str) -> str | None:
-    entries = _quarantine_entries()
-    entry = next((row for row in entries if row.get("id") == entry_id), None)
+    try:
+        with _quarantine_guard():
+            entries = _quarantine_entries()
+            entry = next((row for row in entries if row.get("id") == entry_id), None)
+    except ValueError as exc:
+        return str(exc)
     if not entry:
         return "quarantine entry not found"
     source, destination = Path(entry["stored"]), Path(entry["original"])
     if path_exists(destination):
         return "original path already exists"
     try:
+        entry["state"] = "restoring"
+        _write_quarantine_manifest(QUARANTINE_DIR / entry_id, entry)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(destination))
-        _save_quarantine_entries([row for row in entries if row.get("id") != entry_id])
+        with _quarantine_guard():
+            current = _quarantine_entries()
+            _save_quarantine_entries([row for row in current if row.get("id") != entry_id])
         shutil.rmtree(QUARANTINE_DIR / entry_id, ignore_errors=True)
         log_security_event("quarantine-restored", {"id": entry_id, "path": str(destination)})
         return None
@@ -717,19 +927,34 @@ def restore_quarantine(entry_id: str) -> str | None:
 
 
 def purge_expired_quarantine() -> int:
-    entries = _quarantine_entries()
+    try:
+        with _quarantine_guard():
+            entries = _quarantine_entries()
+    except ValueError as exc:
+        log_security_event("quarantine-index-invalid", {"error": str(exc)})
+        return 0
     retention = max(1, int(load_config().get("quarantine_retention_days", 30))) * 86400
     cutoff = int(time.time()) - retention
     kept: list[dict] = []
     removed = 0
     for entry in entries:
         if int(entry.get("created", 0)) < cutoff:
-            shutil.rmtree(QUARANTINE_DIR / str(entry.get("id", "")), ignore_errors=True)
-            removed += 1
+            target_dir = QUARANTINE_DIR / str(entry.get("id", ""))
+            try:
+                shutil.rmtree(target_dir)
+                if path_exists(target_dir):
+                    raise OSError("quarantine directory still exists after deletion")
+                removed += 1
+            except OSError as exc:
+                kept.append(entry)
+                log_security_event("quarantine-expiry-failed", {
+                    "id": entry.get("id"), "path": str(target_dir), "error": str(exc),
+                })
         else:
             kept.append(entry)
     if removed:
-        _save_quarantine_entries(kept)
+        with _quarantine_guard():
+            _save_quarantine_entries(kept)
         log_security_event("quarantine-expired", {"removed": removed})
     return removed
 
@@ -755,13 +980,19 @@ def _is_reparse_point(path: Path) -> bool:
             return False
 
 
-def delete_path(path: Path, use_trash: bool, dry_run: bool, known_size: int = 0) -> Optional[str]:
+def delete_path(
+    path: Path,
+    use_trash: bool,
+    dry_run: bool,
+    known_size: int = 0,
+    allow_git_changes: bool = False,
+) -> Optional[str]:
     """Returns None on success, error string otherwise.
 
     known_size: pre-computed size from the scanner (avoids redundant dir_size walk).
     """
-    if is_protected_path(path):
-        msg = "protected path"
+    msg = deletion_block_reason(path, allow_git_changes=allow_git_changes)
+    if msg:
         log_operation("delete-blocked", path, result=msg)
         return msg
     # Use provided known_size when available to avoid slow re-computation
@@ -778,7 +1009,7 @@ def delete_path(path: Path, use_trash: bool, dry_run: bool, known_size: int = 0)
         return None
     if use_trash:
         if load_config().get("quarantine_enabled", True):
-            return quarantine_path(path, size=size)
+            return quarantine_path(path, size=size, allow_git_changes=allow_git_changes)
         if send2trash is None:
             # Safe mode requested but recycle-bin support is unavailable.
             # Do NOT silently fall back to permanent deletion.
@@ -826,6 +1057,17 @@ def trash_paths_batch(paths: List[Path],
     if load_config().get("quarantine_enabled", True):
         for p in paths:
             result[str(p)] = quarantine_path(p, size=sizes.get(str(p), 0))
+        return result
+    safe_paths: list[Path] = []
+    for p in paths:
+        reason = deletion_block_reason(p)
+        if reason:
+            log_operation("delete-blocked", p, result=reason)
+            result[str(p)] = reason
+        else:
+            safe_paths.append(p)
+    paths = safe_paths
+    if not paths:
         return result
     if send2trash is None:
         msg = "recycle bin unavailable (send2trash not installed)"
@@ -1081,9 +1323,11 @@ def load_purge_roots(home: Path = USER) -> List[Path]:
     return roots
 
 
-def iter_dev_folders(roots: List[Path]):
+def iter_dev_folders(roots: List[Path], cancel: threading.Event | None = None):
     for root in roots:
         for dirpath, dirnames, _ in os.walk(root, onerror=lambda e: None):
+            if cancel is not None and cancel.is_set():
+                return
             dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith("$")]
             matched_here = []
             for d in list(dirnames):
@@ -1116,7 +1360,8 @@ def _file_count_and_size(path: Path) -> tuple[int, int]:
     return count, total
 
 
-def find_large_files(path: Path, minimum_size: int, on_progress=None) -> List[dict]:
+def find_large_files(path: Path, minimum_size: int, on_progress=None,
+                     cancel: threading.Event | None = None) -> List[dict]:
     large: List[dict] = []
     if path.is_file():
         try:
@@ -1129,7 +1374,11 @@ def find_large_files(path: Path, minimum_size: int, on_progress=None) -> List[di
     scanned = 0
     last_emit = time.time()
     for root, _dirs, files in os.walk(path, onerror=lambda e: None):
+        if cancel is not None and cancel.is_set():
+            break
         for name in files:
+            if cancel is not None and cancel.is_set():
+                break
             p = Path(root) / name
             try:
                 size = p.stat().st_size
@@ -1492,7 +1741,8 @@ def old_installers(days: int = 30) -> List[Item]:
 class Scanner:
     def __init__(self, whitelist: Optional[List[Path]] = None,
                  profile: str = "full", roots: Optional[List[Path]] = None,
-                 use_cache: bool = True) -> None:
+                 use_cache: bool = True,
+                 cancel: threading.Event | None = None) -> None:
         self.categories: List[Category] = []
         self.status: str = "Initializing…"
         self.done: bool = False
@@ -1507,12 +1757,15 @@ class Scanner:
         self.use_cache = use_cache
         self.cache = load_size_cache() if use_cache else {}
         self._cache_dirty = False
+        self.cancel = cancel or threading.Event()
 
     def _add(self, c: Category) -> None:
         with self._lock:
             self.categories.append(c)
 
     def _size_item(self, it: Item) -> None:
+        if self.cancel.is_set():
+            return
         if is_whitelisted(it.path, self.whitelist):
             it.size = 0
             it.scanning = False
@@ -1537,9 +1790,10 @@ class Scanner:
         def on_progress(n: int) -> None:
             it.partial = n
         if self.profile == "clean":
-            it.size = dir_size(it.path, on_progress=on_progress, max_seconds=0.35, max_files=5000)
+            it.size = dir_size(it.path, on_progress=on_progress, max_seconds=0.35,
+                               max_files=5000, cancel=self.cancel)
         else:
-            it.size = dir_size(it.path, on_progress=on_progress)
+            it.size = dir_size(it.path, on_progress=on_progress, cancel=self.cancel)
         it.partial = it.size
         it.scanning = False
         with self._lock:
@@ -1549,6 +1803,10 @@ class Scanner:
                 self._cache_dirty = True
 
     def run(self) -> None:
+        if self.cancel.is_set():
+            self.status = "Cancelled."
+            self.done = True
+            return
         if self.profile == "idle":
             self.status = "Idle."
             self.done = True
@@ -1579,6 +1837,10 @@ class Scanner:
 
         fixed_cats: List[Category] = []
         for key, title, desc, path, safe, icon in build_fixed_path_categories():
+            if self.cancel.is_set():
+                self.status = "Cancelled."
+                self.done = True
+                return
             cat = Category(key=key, title=title, description=desc, icon=icon,
                            safe_default=safe, expanded=False)
             cat.items.extend(fixed_category_items(key, path, selected=safe))
@@ -1630,6 +1892,10 @@ class Scanner:
         if pending:
             with ThreadPoolExecutor(max_workers=self.workers) as pool:
                 list(pool.map(self._size_item, pending))
+        if self.cancel.is_set():
+            self.status = "Cancelled."
+            self.done = True
+            return
         for cat in fixed_cats:
             cat.scanning = False
         self.current_cat_key = None
@@ -1646,7 +1912,7 @@ class Scanner:
         roots = self.roots or discover_scan_roots()
         self.status = f"Searching {len(roots)} root(s) for dev folders…"
         dev_items: List[Item] = []
-        for title, p in iter_dev_folders(roots):
+        for title, p in iter_dev_folders(roots, cancel=self.cancel):
             cat = dev_titles[title]
             it = Item(path=p, selected=True)
             with self._lock:
@@ -1656,6 +1922,10 @@ class Scanner:
         if dev_items:
             with ThreadPoolExecutor(max_workers=self.workers) as pool:
                 list(pool.map(self._size_item, dev_items))
+        if self.cancel.is_set():
+            self.status = "Cancelled."
+            self.done = True
+            return
         for title, cat in dev_titles.items():
             cat.items.sort(key=lambda i: i.size, reverse=True)
             cat.description = f"{len(cat.items)} folder(s) under your dev dirs"
@@ -3802,6 +4072,40 @@ def status_payload() -> dict:
 # ---------- serve (NDJSON daemon for Tauri GUI) ----------
 import threading as _serve_threading
 
+SERVE_PROTOCOL_VERSION = 1
+SERVE_MAX_REQUEST_BYTES = 1024 * 1024
+SERVE_MAX_WORKERS = max(2, min(8, os.cpu_count() or 4))
+SERVE_OPS = {
+    "ping", "status", "scan", "delete", "uninstall_list", "leftovers",
+    "uninstall_run", "optimize_list", "optimize_run", "ports_list", "ports_kill",
+    "update", "remove", "cleanup_history", "drives", "open_path", "settings_get",
+    "settings_set", "is_admin", "completion_install", "schedule_get", "schedule_set",
+    "schedule_clear", "startup_list", "startup_disable", "processes_list", "duplicates",
+    "security_overview", "quarantine_restore", "secret_scan", "supply_audit",
+}
+
+
+def _validate_serve_request(value: object) -> tuple[dict | None, str]:
+    if not isinstance(value, dict):
+        return None, "request must be an object"
+    rid = value.get("id")
+    op = value.get("op")
+    if not isinstance(rid, str) or not rid or len(rid) > 128:
+        return None, "id must be a non-empty string up to 128 characters"
+    if not isinstance(op, str) or op not in SERVE_OPS | {"cancel"}:
+        return None, "unknown or invalid op"
+    if value.get("protocol", SERVE_PROTOCOL_VERSION) != SERVE_PROTOCOL_VERSION:
+        return None, "unsupported protocol version"
+    for key in ("paths", "targets", "keys", "pids"):
+        field = value.get(key)
+        if field is not None and (not isinstance(field, list) or len(field) > 10_000):
+            return None, f"{key} must be a list with at most 10000 items"
+    for key in ("permanent", "dry_run", "user_confirmed"):
+        field = value.get(key)
+        if field is not None and not isinstance(field, bool):
+            return None, f"{key} must be a boolean"
+    return value, ""
+
 
 def _serve_emit(lock, event: dict) -> None:
     """Tek satır NDJSON olayı stdout'a atomik yaz."""
@@ -3850,7 +4154,7 @@ def _serve_scan(req: dict, emit, cancel) -> None:
     if mode == "large":
         target = paths[0] if paths else USER
         min_large = int(load_config().get("large_file_min_mb", 512)) * 1024 * 1024
-        for f in find_large_files(target, min_large):
+        for f in find_large_files(target, min_large, cancel=cancel):
             if cancel.is_set():
                 emit({"id": rid, "ev": "done", "ok": False, "cancelled": True})
                 return
@@ -3863,7 +4167,8 @@ def _serve_scan(req: dict, emit, cancel) -> None:
     profile = {"clean": "clean", "purge": "purge",
                "installers": "installers", "categories": "full"}.get(mode, "clean")
     scanner = Scanner(whitelist=load_whitelist(), profile=profile,
-                      roots=paths or None, use_cache=not req.get("no_cache"))
+                      roots=paths or None, use_cache=not req.get("no_cache"),
+                      cancel=cancel)
     scanner.run()
     if cancel.is_set():
         emit({"id": rid, "ev": "done", "ok": False, "cancelled": True})
@@ -3892,6 +4197,7 @@ def _serve_delete(req: dict, emit, cancel) -> None:
     targets = [Path(p) for p in req.get("targets", []) if p]
     use_trash = not bool(req.get("permanent"))
     dry_run = bool(req.get("dry_run"))
+    user_confirmed = bool(req.get("user_confirmed"))
     emit({"id": rid, "ev": "started", "total_hint": len(targets)})
     ok = err = 0
     for idx, path in enumerate(targets):
@@ -3899,7 +4205,12 @@ def _serve_delete(req: dict, emit, cancel) -> None:
             emit({"id": rid, "ev": "done", "ok": False, "cancelled": True,
                   "summary": {"ok": ok, "err": err}})
             return
-        error = delete_path(path, use_trash=use_trash, dry_run=dry_run)
+        error = delete_path(
+            path,
+            use_trash=use_trash,
+            dry_run=dry_run,
+            allow_git_changes=user_confirmed,
+        )
         if error:
             err += 1
             emit({"id": rid, "ev": "item_result", "path": str(path),
@@ -4384,7 +4695,8 @@ def _serve_duplicates(req: dict, emit, cancel) -> None:
             groups += 1
             for fp in dups:
                 emit({"id": rid, "ev": "item", "path": str(fp), "name": fp.name,
-                      "size": sz, "kind": "duplicate", "group": digest[:8],
+                      "size": sz, "kind": "duplicate", "group": f"{sz}:{digest}",
+                      "group_label": digest[:8],
                       "selected": False})
     emit({"id": rid, "ev": "done", "ok": True, "summary": {"groups": groups}})
 
@@ -4484,8 +4796,17 @@ def supply_chain_audit(root: Path) -> dict:
             audits.append({"project": project, **_run_audit(["npm", "audit", "--json"], cwd)})
         if "Cargo.lock" in names:
             audits.append({"project": project, **_run_audit(["cargo", "audit", "--json"], cwd)})
-        if "requirements.txt" in names or "pyproject.toml" in names:
-            audits.append({"project": project, **_run_audit(["pip-audit", "--format", "json"], cwd)})
+        if "requirements.txt" in names:
+            audits.append({
+                "project": project,
+                **_run_audit(["pip-audit", "--requirement", "requirements.txt",
+                              "--format", "json"], cwd),
+            })
+        elif "pyproject.toml" in names:
+            audits.append({
+                "project": project, "tool": "pip-audit", "status": "unsupported",
+                "output": "pyproject.toml requires a supported lock or requirements file",
+            })
     log_security_event("supply-chain-audit", {"root": str(root), "manifests": len(manifests),
                                               "audits": len(audits)})
     return {"root": str(root), "sbom": manifests, "audits": audits}
@@ -4493,12 +4814,13 @@ def supply_chain_audit(root: Path) -> dict:
 
 def _serve_security_overview(req: dict, emit, cancel) -> None:
     rid = req.get("id")
+    reconciliation = reconcile_quarantine()
     purge_expired_quarantine()
     entries = _quarantine_entries()
     logs, valid = read_security_log(limit=int(req.get("limit", 100)))
     emit({"id": rid, "ev": "done", "ok": True, "payload": {
         "quarantine": entries, "security_log": logs, "log_valid": valid,
-        "config": load_config(),
+        "config": load_config(), "reconciliation": reconciliation,
     }})
 
 
@@ -4526,13 +4848,21 @@ def _serve_supply_audit(req: dict, emit, cancel) -> None:
     emit({"id": rid, "ev": "done", "ok": True, "payload": payload})
 
 
-def _serve_handle(req: dict, emit, cancels: dict) -> None:
+def _serve_handle(req: dict, emit, cancels: dict, cancels_lock, cancel) -> None:
     """Tek bir isteği işle. emit(event_dict) çağrılır."""
     rid = req.get("id")
     op = req.get("op")
-    cancel = _serve_threading.Event()
-    if rid is not None:
-        cancels[rid] = cancel
+    raw_emit = emit
+    terminal_sent = False
+
+    def emit(event: dict) -> None:
+        nonlocal terminal_sent
+        if terminal_sent:
+            return
+        raw_emit(event)
+        if event.get("ev") == "done":
+            terminal_sent = True
+
     try:
         if op == "ping":
             emit({"id": rid, "ev": "done", "ok": True})
@@ -4601,10 +4931,12 @@ def _serve_handle(req: dict, emit, cancels: dict) -> None:
                   "message": f"unknown op: {op}"})
             emit({"id": rid, "ev": "done", "ok": False})
     except Exception as exc:  # bir istek hatası döngüyü düşürmesin
-        emit({"id": rid, "ev": "error", "code": "exception", "message": str(exc)})
-        emit({"id": rid, "ev": "done", "ok": False})
+        if not terminal_sent:
+            emit({"id": rid, "ev": "error", "code": "exception", "message": str(exc)})
+            emit({"id": rid, "ev": "done", "ok": False})
     finally:
-        cancels.pop(rid, None)
+        with cancels_lock:
+            cancels.pop(rid, None)
 
 
 def cmd_serve() -> None:
@@ -4618,38 +4950,55 @@ def cmd_serve() -> None:
     except AttributeError:
         pass
     out_lock = _serve_threading.Lock()
+    cancels_lock = _serve_threading.Lock()
     cancels: dict = {}  # rid -> threading.Event
-    workers: list = []
+    workers = ThreadPoolExecutor(max_workers=SERVE_MAX_WORKERS,
+                                 thread_name_prefix="wmole-serve")
 
-    _serve_emit(out_lock, {"id": None, "ev": "ready"})
+    _serve_emit(out_lock, {"id": None, "ev": "ready",
+                           "protocol": SERVE_PROTOCOL_VERSION})
     for raw in sys.stdin:
+        if len(raw.encode("utf-8", errors="replace")) > SERVE_MAX_REQUEST_BYTES:
+            _serve_emit(out_lock, {"id": None, "ev": "error",
+                                   "code": "request_too_large",
+                                   "message": "request exceeds 1 MiB"})
+            continue
         raw = raw.strip()
         if not raw:
             continue
         try:
-            req = json.loads(raw)
+            value = json.loads(raw)
         except json.JSONDecodeError:
             _serve_emit(out_lock, {"id": None, "ev": "error",
                                    "code": "bad_json", "message": raw[:200]})
             continue
+        req, validation_error = _validate_serve_request(value)
+        if req is None:
+            invalid_id = value.get("id") if isinstance(value, dict) else None
+            _serve_emit(out_lock, {"id": invalid_id, "ev": "error",
+                                   "code": "invalid_request", "message": validation_error})
+            _serve_emit(out_lock, {"id": invalid_id, "ev": "done", "ok": False})
+            continue
         rid = req.get("id")
         if req.get("op") == "cancel":
-            ev = cancels.get(rid)
+            with cancels_lock:
+                ev = cancels.get(rid)
             if ev:
                 ev.set()
             continue
-        worker = _serve_threading.Thread(
-            target=_serve_handle,
-            args=(req, lambda e: _serve_emit(out_lock, e), cancels),
-            daemon=True,
-        )
-        worker.start()
-        workers.append(worker)
-        workers = [w for w in workers if w.is_alive()]
+        cancel = _serve_threading.Event()
+        with cancels_lock:
+            if rid in cancels:
+                _serve_emit(out_lock, {"id": rid, "ev": "error",
+                                       "code": "duplicate_id",
+                                       "message": "request id is already active"})
+                _serve_emit(out_lock, {"id": rid, "ev": "done", "ok": False})
+                continue
+            cancels[rid] = cancel
+        workers.submit(_serve_handle, req, lambda e: _serve_emit(out_lock, e),
+                       cancels, cancels_lock, cancel)
 
-    # stdin kapandı: çalışan worker'ların olaylarını yazmasını bekle (graceful shutdown).
-    for w in workers:
-        w.join(timeout=120)
+    workers.shutdown(wait=True, cancel_futures=False)
 
 
 def cli_clean(dry_run: bool, json_out: bool, roots: Optional[List[Path]] = None,

@@ -102,8 +102,8 @@
       <h2>{$lang === "tr" ? "wmole'a hoş geldin 🐹" : "Welcome to wmole 🐹"}</h2>
       <p>
         {$lang === "tr"
-          ? "Windows için bakım araç seti. Sol menüden temizlik, sistem ve gelişmiş araçlara ulaşırsın. Tüm silmeler önce Geri Dönüşüm Kutusu'na gider ve onay penceresiyle korunur."
-          : "A maintenance toolkit for Windows. Use the left menu for cleaning, system and advanced tools. All deletes go to the Recycle Bin first and are guarded by a confirmation dialog."}
+          ? "Windows için bakım araç seti. Sol menüden temizlik, sistem ve gelişmiş araçlara ulaşırsın. Güvenli silmeler önce geri alınabilir karantinaya gider ve onay penceresiyle korunur."
+          : "A maintenance toolkit for Windows. Use the left menu for cleaning, system and advanced tools. Safe deletions go to recoverable quarantine first and are guarded by a confirmation dialog."}
       </p>
       <p class="muted">
         {$lang === "tr"

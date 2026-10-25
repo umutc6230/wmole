@@ -1,8 +1,14 @@
 import json
 import io
 import contextlib
+import os
+import threading
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
@@ -643,6 +649,253 @@ class WmoleBehaviorTests(unittest.TestCase):
                 self.assertIsNone(mole.restore_quarantine(entry["id"]))
             self.assertEqual((source / "data.txt").read_text(encoding="utf-8"), "safe")
 
+    def test_quarantine_index_failure_restores_original_without_data_loss(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "important.txt"
+            source.write_bytes(b"must survive")
+            vault = root / "vault"
+            with mock.patch.object(mole, "QUARANTINE_DIR", vault), \
+                 mock.patch.object(mole, "QUARANTINE_INDEX", vault / "index.json"), \
+                 mock.patch.object(mole, "deletion_block_reason", return_value=""), \
+                 mock.patch.object(mole, "_save_quarantine_entries",
+                                   side_effect=OSError("disk full")):
+                error = mole.quarantine_path(source)
+            self.assertIn("original restored", error)
+            self.assertEqual(source.read_bytes(), b"must survive")
+            self.assertFalse(any(vault.rglob("important.txt")))
+
+    def test_quarantine_index_failure_preserves_vault_copy_if_rollback_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "important.txt"
+            source.write_bytes(b"must survive")
+            vault = root / "vault"
+            real_move = shutil.move
+
+            def fail_rollback(src, dst):
+                if Path(src).parent.parent == vault:
+                    raise OSError("restore denied")
+                return real_move(src, dst)
+
+            with mock.patch.object(mole, "QUARANTINE_DIR", vault), \
+                 mock.patch.object(mole, "QUARANTINE_INDEX", vault / "index.json"), \
+                 mock.patch.object(mole, "deletion_block_reason", return_value=""), \
+                 mock.patch.object(mole, "_save_quarantine_entries",
+                                   side_effect=OSError("disk full")), \
+                 mock.patch.object(mole.shutil, "move", side_effect=fail_rollback):
+                error = mole.quarantine_path(source)
+            stored = list(vault.rglob("important.txt"))
+            self.assertIn("file preserved at", error)
+            self.assertEqual(len(stored), 1)
+            self.assertEqual(stored[0].read_bytes(), b"must survive")
+
+    def test_corrupt_quarantine_index_is_not_treated_as_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            index = Path(td) / "index.json"
+            index.write_text("{broken", encoding="utf-8")
+            with mock.patch.object(mole, "QUARANTINE_INDEX", index):
+                with self.assertRaisesRegex(ValueError, "unreadable"):
+                    mole._quarantine_entries()
+
+    def test_delete_path_applies_git_guard_to_permanent_delete(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td) / "dirty.txt"
+            target.write_text("keep", encoding="utf-8")
+            with mock.patch.object(mole, "deletion_block_reason",
+                                   return_value="git target contains modified files"):
+                error = mole.delete_path(target, use_trash=False, dry_run=False)
+            self.assertIn("modified", error)
+            self.assertTrue(target.exists())
+
+    def test_trash_batch_filters_git_protected_paths(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            blocked = root / "blocked.txt"
+            safe = root / "safe.txt"
+            blocked.write_text("keep", encoding="utf-8")
+            safe.write_text("trash", encoding="utf-8")
+            sent = []
+
+            def reason(path):
+                return "git target contains modified files" if path == blocked else ""
+
+            with mock.patch.object(mole, "load_config",
+                                   return_value={"quarantine_enabled": False}), \
+                 mock.patch.object(mole, "deletion_block_reason", side_effect=reason), \
+                 mock.patch.object(mole, "send2trash", side_effect=lambda paths: sent.extend(paths)):
+                result = mole.trash_paths_batch([blocked, safe])
+            self.assertIn("modified", result[str(blocked)])
+            self.assertEqual(sent, [str(safe)])
+
+    def test_parallel_quarantine_writes_keep_every_entry(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vault = root / "vault"
+            sources = []
+            for index in range(12):
+                source = root / f"item-{index}.txt"
+                source.write_text(str(index), encoding="utf-8")
+                sources.append(source)
+            with mock.patch.object(mole, "QUARANTINE_DIR", vault), \
+                 mock.patch.object(mole, "QUARANTINE_INDEX", vault / "index.json"), \
+                 mock.patch.object(mole, "deletion_block_reason", return_value=""), \
+                 mock.patch.object(mole, "log_operation"):
+                with ThreadPoolExecutor(max_workers=6) as pool:
+                    errors = list(pool.map(mole.quarantine_path, sources))
+                entries = mole._quarantine_entries()
+            self.assertEqual(errors, [None] * len(sources))
+            self.assertEqual(len(entries), len(sources))
+            self.assertEqual({row["name"] for row in entries}, {p.name for p in sources})
+
+    @unittest.skipUnless(os.name == "nt", "Windows process lock")
+    def test_parallel_processes_keep_every_quarantine_entry(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vault = root / "vault"
+            script = (
+                "import pathlib,sys,mole;"
+                "root=pathlib.Path(sys.argv[1]);vault=pathlib.Path(sys.argv[2]);"
+                "mole.QUARANTINE_DIR=vault;mole.QUARANTINE_INDEX=vault/'index.json';"
+                "mole.OP_LOG_FILE=root/'operations.log';mole.LOG_DIR=root;"
+                "mole.SECURITY_LOG_FILE=root/'security.jsonl';"
+                "mole.SECURITY_KEY_FILE=root/'security.key';mole.WMOLE_DIR=root;"
+                "error=mole.quarantine_path(pathlib.Path(sys.argv[3]));"
+                "raise SystemExit(1 if error else 0)"
+            )
+            sources = []
+            for index in range(8):
+                source = root / f"process-{index}.txt"
+                source.write_text(str(index), encoding="utf-8")
+                sources.append(source)
+            processes = [
+                subprocess.Popen(
+                    [sys.executable, "-c", script, str(root), str(vault), str(source)],
+                    cwd=str(Path(__file__).resolve().parent.parent),
+                )
+                for source in sources
+            ]
+            self.assertEqual([process.wait(timeout=30) for process in processes], [0] * len(sources))
+            entries = json.loads((vault / "index.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(entries), len(sources))
+
+    def test_dir_size_stops_when_cancelled(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for index in range(20):
+                (root / f"{index}.bin").write_bytes(b"x" * 10)
+            cancel = threading.Event()
+            cancel.set()
+            self.assertEqual(mole.dir_size(root, cancel=cancel), 0)
+
+    def test_reconcile_recovers_moved_file_missing_from_index(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vault = root / "vault"
+            entry_id = "12345678-abcdef12"
+            target_dir = vault / entry_id
+            target_dir.mkdir(parents=True)
+            stored = target_dir / "lost.txt"
+            stored.write_text("safe", encoding="utf-8")
+            entry = {
+                "id": entry_id, "original": str(root / "lost.txt"),
+                "stored": str(stored), "size": 4, "created": 12345678,
+                "name": "lost.txt", "state": "moving",
+            }
+            (target_dir / "entry.json").write_text(json.dumps(entry), encoding="utf-8")
+            with mock.patch.object(mole, "QUARANTINE_DIR", vault), \
+                 mock.patch.object(mole, "QUARANTINE_INDEX", vault / "index.json"), \
+                 mock.patch.object(mole, "log_security_event"):
+                result = mole.reconcile_quarantine()
+                entries = mole._quarantine_entries()
+            self.assertEqual(result["recovered"], 1)
+            self.assertEqual(entries[0]["state"], "recoverable")
+            self.assertEqual(stored.read_text(encoding="utf-8"), "safe")
+
+    def test_reconcile_rejects_manifest_stored_outside_vault(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vault = root / "vault"
+            target_dir = vault / "12345678-abcdef12"
+            target_dir.mkdir(parents=True)
+            outside = root / "outside.txt"
+            outside.write_text("keep", encoding="utf-8")
+            entry = {
+                "id": "12345678-abcdef12", "original": str(root / "original.txt"),
+                "stored": str(outside), "size": 4, "created": 12345678,
+                "name": "outside.txt", "state": "moving",
+            }
+            (target_dir / "entry.json").write_text(json.dumps(entry), encoding="utf-8")
+            with mock.patch.object(mole, "QUARANTINE_DIR", vault), \
+                 mock.patch.object(mole, "QUARANTINE_INDEX", vault / "index.json"), \
+                 mock.patch.object(mole, "log_security_event"):
+                result = mole.reconcile_quarantine()
+            self.assertGreaterEqual(result["invalid"], 1)
+            self.assertEqual(outside.read_text(encoding="utf-8"), "keep")
+
+    def test_reconcile_migrates_legacy_entry_to_manifest_idempotently(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vault = root / "vault"
+            entry_id = "1700000000-abcdef12"
+            stored = vault / entry_id / "legacy.txt"
+            stored.parent.mkdir(parents=True)
+            stored.write_text("legacy", encoding="utf-8")
+            entry = {
+                "id": entry_id, "original": str(root / "legacy.txt"),
+                "stored": str(stored), "size": 6, "created": 1700000000,
+                "name": "legacy.txt",
+            }
+            index = vault / "index.json"
+            index.write_text(json.dumps([entry]), encoding="utf-8")
+            with mock.patch.object(mole, "QUARANTINE_DIR", vault), \
+                 mock.patch.object(mole, "QUARANTINE_INDEX", index):
+                first = mole.reconcile_quarantine()
+                first_manifest = (stored.parent / "entry.json").read_text(encoding="utf-8")
+                second = mole.reconcile_quarantine()
+            self.assertEqual(first, {"recovered": 0, "stale": 0, "invalid": 0})
+            self.assertEqual(second, first)
+            self.assertEqual(json.loads(first_manifest)["state"], "committed")
+            self.assertTrue(index.with_suffix(".json.bak").exists())
+
+    def test_cross_volume_verification_failure_preserves_source(self):
+        source = mock.Mock(spec=Path)
+        target = mock.Mock(spec=Path)
+        source.stat.return_value.st_dev = 1
+        target.parent.stat.return_value.st_dev = 2
+        source.is_dir.return_value = False
+        source.is_symlink.return_value = False
+        temporary = target.with_name.return_value
+        temporary.is_dir.return_value = False
+        with mock.patch.object(mole.shutil, "copy2"), \
+             mock.patch.object(mole, "_content_fingerprint", side_effect=[(4, "a"), (4, "b")]), \
+             self.assertRaisesRegex(OSError, "verification failed"):
+            mole._move_into_quarantine(source, target)
+        source.unlink.assert_not_called()
+        temporary.unlink.assert_called_once_with(missing_ok=True)
+
+    def test_expiry_keeps_index_entry_when_vault_delete_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vault = root / "vault"
+            entry_id = "1700000000-abcdef12"
+            target_dir = vault / entry_id
+            target_dir.mkdir(parents=True)
+            entry = {
+                "id": entry_id, "original": str(root / "old.txt"),
+                "stored": str(target_dir / "old.txt"), "created": 1,
+            }
+            index = vault / "index.json"
+            index.write_text(json.dumps([entry]), encoding="utf-8")
+            with mock.patch.object(mole, "QUARANTINE_DIR", vault), \
+                 mock.patch.object(mole, "QUARANTINE_INDEX", index), \
+                 mock.patch.object(mole, "load_config", return_value={"quarantine_retention_days": 1}), \
+                 mock.patch.object(mole.shutil, "rmtree", side_effect=OSError("locked")), \
+                 mock.patch.object(mole, "log_security_event"):
+                removed = mole.purge_expired_quarantine()
+            self.assertEqual(removed, 0)
+            self.assertEqual(json.loads(index.read_text(encoding="utf-8"))[0]["id"], entry_id)
+
     def test_git_delete_risk_blocks_dirty_target(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -652,6 +905,61 @@ class WmoleBehaviorTests(unittest.TestCase):
             completed = mock.Mock(returncode=0, stdout=" M src/app.py\n")
             with mock.patch.object(mole.subprocess, "run", return_value=completed):
                 self.assertIn("modified", mole.git_delete_risk(target))
+
+    def test_real_git_dirty_and_untracked_targets_block_all_delete_modes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "test@wmole.local"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "wmole test"], check=True)
+            tracked = root / "tracked.txt"
+            tracked.write_text("before", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "tracked.txt"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "fixture"], check=True)
+            tracked.write_text("after", encoding="utf-8")
+            untracked = root / "untracked.txt"
+            untracked.write_text("new", encoding="utf-8")
+
+            with mock.patch.object(mole, "log_operation"), \
+                 mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": False}), \
+                 mock.patch.object(mole, "send2trash") as trash:
+                for target in (tracked, untracked):
+                    self.assertIn("modified or untracked", mole.delete_path(target, True, False) or "")
+                    self.assertIn("modified or untracked", mole.delete_path(target, False, False) or "")
+                    self.assertIn("modified or untracked", mole.delete_path(target, False, True) or "")
+                    self.assertTrue(target.exists())
+            trash.assert_not_called()
+
+    def test_confirmed_gui_delete_can_override_git_guard(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td) / "target"
+            target.mkdir()
+            (target / "artifact.bin").write_bytes(b"artifact")
+            with mock.patch.object(
+                mole, "git_delete_risk", return_value="git safety check failed"
+            ), mock.patch.object(mole, "log_operation"):
+                error = mole.delete_path(
+                    target,
+                    use_trash=False,
+                    dry_run=False,
+                    allow_git_changes=True,
+                )
+            self.assertIsNone(error)
+            self.assertFalse(target.exists())
+
+    def test_confirmed_gui_delete_never_overrides_system_protection(self):
+        target = Path(r"C:\Windows")
+        with mock.patch.object(mole, "is_protected_path", return_value=True), \
+             mock.patch.object(mole, "git_delete_risk") as git_check, \
+             mock.patch.object(mole, "log_operation"):
+            error = mole.delete_path(
+                target,
+                use_trash=False,
+                dry_run=False,
+                allow_git_changes=True,
+            )
+        self.assertEqual(error, "protected path")
+        git_check.assert_not_called()
 
     def test_secret_scan_redacts_detected_value(self):
         with tempfile.TemporaryDirectory() as td:
@@ -690,6 +998,46 @@ class WmoleBehaviorTests(unittest.TestCase):
                 result = mole.supply_chain_audit(root)
             self.assertEqual(len(result["sbom"]), 2)
             self.assertEqual(result["audits"][0]["status"], "ok")
+
+    def test_supply_chain_audit_targets_python_requirements_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "requirements.txt").write_text("rich==13.7.0", encoding="utf-8")
+            with mock.patch.object(mole, "_run_audit", return_value={
+                "tool": "pip-audit", "status": "ok", "code": 0, "output": "{}",
+            }) as run_audit, mock.patch.object(mole, "log_security_event"):
+                mole.supply_chain_audit(root)
+            self.assertEqual(
+                run_audit.call_args.args[0],
+                ["pip-audit", "--requirement", "requirements.txt", "--format", "json"],
+            )
+
+    def test_supply_chain_audit_does_not_audit_global_env_for_pyproject_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "pyproject.toml").write_text("[project]\nname='demo'", encoding="utf-8")
+            with mock.patch.object(mole, "_run_audit") as run_audit, \
+                 mock.patch.object(mole, "log_security_event"):
+                result = mole.supply_chain_audit(root)
+            run_audit.assert_not_called()
+            self.assertEqual(result["audits"][0]["status"], "unsupported")
+
+    def test_duplicate_group_uses_full_digest_and_size(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "a.bin").write_bytes(b"same data")
+            (root / "b.bin").write_bytes(b"same data")
+            events = []
+            mole._serve_duplicates(
+                {"id": "dups", "paths": [str(root)], "min_size": 1},
+                events.append,
+                threading.Event(),
+            )
+            items = [event for event in events if event["ev"] == "item"]
+            self.assertEqual(len(items), 2)
+            self.assertEqual(items[0]["group"], items[1]["group"])
+            self.assertGreater(len(items[0]["group"]), 32)
+            self.assertEqual(len(items[0]["group_label"]), 8)
 
     def test_process_protection_blocks_configured_developer_process(self):
         fake_proc = mock.Mock()

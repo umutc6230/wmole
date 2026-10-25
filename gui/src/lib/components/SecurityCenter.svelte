@@ -18,8 +18,10 @@
   let quarantineEnabled = $state(true);
   let retentionDays = $state(30);
   let newProcess = $state("");
-  let secrets = $state<{ scanned: number; findings: SecretFinding[]; truncated?: boolean } | null>(null);
+  let secrets = $state<{ scanned: number; findings: SecretFinding[]; truncated?: boolean; error?: string } | null>(null);
   let supply = $state<{ sbom: Array<{ path: string; name: string; sha256: string }>; audits: AuditResult[] } | null>(null);
+  let scanError = $state("");
+  let auditError = $state("");
 
   function fmt(n: number) {
     const units = ["B", "KB", "MB", "GB"]; let value = n || 0; let index = 0;
@@ -41,21 +43,39 @@
 
   async function scanSecrets() {
     loading = true;
+    scanError = "";
     try {
       const result = await request({ op: "secret_scan", path: root });
       secrets = (result.payload as any) ?? { scanned: 0, findings: [] };
+      if (!result.ok || secrets?.error) {
+        scanError = String(secrets?.error || tr("Secret taraması tamamlanamadı"));
+        toast(scanError, "err");
+        return;
+      }
       toast(`${secrets?.findings.length ?? 0} ${tr("secret bulgusu")}`, secrets?.findings.length ? "err" : "ok");
       await load();
+    } catch {
+      scanError = tr("Secret taraması tamamlanamadı");
+      toast(scanError, "err");
     } finally { loading = false; }
   }
 
   async function auditSupply() {
     loading = true;
+    auditError = "";
     try {
       const result = await request({ op: "supply_audit", path: root });
+      if (!result.ok) {
+        auditError = tr("Bağımlılık denetimi tamamlanamadı");
+        toast(auditError, "err");
+        return;
+      }
       supply = (result.payload as any) ?? { sbom: [], audits: [] };
       toast(tr("Bağımlılık denetimi tamamlandı"), "ok");
       await load();
+    } catch {
+      auditError = tr("Bağımlılık denetimi tamamlanamadı");
+      toast(auditError, "err");
     } finally { loading = false; }
   }
 
@@ -100,6 +120,8 @@
   <section class="panel">
     <h3>{$t("Proje Güvenlik Taraması")}</h3>
     <div class="row"><input bind:value={root} placeholder="C:\projeler" /><button onclick={scanSecrets} disabled={loading}>{$t("Secret Tara")}</button><button onclick={auditSupply} disabled={loading}>{$t("Supply-chain + SBOM")}</button></div>
+    {#if scanError}<p class="error">{scanError}</p>{/if}
+    {#if auditError}<p class="error">{auditError}</p>{/if}
     {#if secrets}
       <p class="summary">{secrets.scanned} {$t("dosya tarandı,")} <b>{secrets.findings.length}</b> {$t("bulgu.")}</p>
       <div class="results">
@@ -143,6 +165,7 @@
   .security { display: flex; flex-direction: column; gap: 12px; font-family: monospace; overflow: auto; }
   .head { display: flex; justify-content: space-between; align-items: center; } h2, h3 { margin: 0; } .head p { color: var(--muted); margin: 5px 0 0; }
   .integrity { color: #58d6a0; font-size: 11px; } .integrity.bad, .danger summary { color: #e5534b; }
+  .error { color: #e5534b; margin: 0; font-size: 12px; }
   .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; } .cards section, .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 13px; }
   .cards strong { color: #58d6a0; display: block; margin-bottom: 6px; } .cards span, .muted, .summary { color: var(--muted); font-size: 12px; }
   .panel { display: flex; flex-direction: column; gap: 10px; } .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

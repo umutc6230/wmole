@@ -4,8 +4,18 @@ import { writable } from "svelte/store";
 import type { Request, SidecarEvent } from "./types";
 
 type Handler = (e: SidecarEvent) => void;
-const handlers = new Map<string, Handler>();
+interface HandlerRecord {
+  handle: Handler;
+  timer: ReturnType<typeof setTimeout>;
+  terminal: boolean;
+  destructive: boolean;
+}
+const handlers = new Map<string, HandlerRecord>();
+const PROTOCOL_VERSION = 1 as const;
 let counter = 0;
+const DEFAULT_TIMEOUT_MS = 120_000;
+const LONG_TIMEOUT_OPS = new Set(["scan", "duplicates", "secret_scan", "supply_audit"]);
+const DESTRUCTIVE_OPS = new Set(["delete", "remove", "uninstall_run", "ports_kill", "quarantine_restore"]);
 
 export const connected = writable(false);
 
@@ -37,14 +47,24 @@ listen<string>("sidecar-event", (msg) => {
     return;
   }
   if (e.ev === "ready") {
-    connected.set(true);
+    if (e.protocol !== PROTOCOL_VERSION) {
+      connected.set(false);
+      return;
+    }
+    void request({ op: "ping" }).then((reply) => connected.set(reply.ok === true)).catch(() => connected.set(false));
     return;
   }
   // Rust tarafı: sidecar süreci beklenmedik şekilde öldü (yeniden başlatma denenecek).
   if (!e.id && (e as any).code === "sidecar_exited") {
     connected.set(false);
     // Bekleyen istekleri kapat ki spinner'lar sonsuza kadar dönmesin.
-    for (const [id, h] of handlers) h({ id, ev: "done", ok: false } as SidecarEvent);
+    for (const [id, record] of handlers) {
+      clearTimeout(record.timer);
+      if (!record.terminal) {
+        record.terminal = true;
+        record.handle({ id, ev: "done", ok: false, outcome: "sidecar_exited" } as SidecarEvent);
+      }
+    }
     handlers.clear();
     inflight = 0;
     activity.set({ busy: false, op: "", label: "", done: 0, total: 0 });
@@ -60,8 +80,14 @@ listen<string>("sidecar-event", (msg) => {
     }));
   }
   if (e.id && handlers.has(e.id)) {
-    handlers.get(e.id)!(e);
-    if (e.ev === "done") handlers.delete(e.id);
+    const record = handlers.get(e.id)!;
+    if (record.terminal) return;
+    record.handle(e);
+    if (e.ev === "done") {
+      record.terminal = true;
+      clearTimeout(record.timer);
+      handlers.delete(e.id);
+    }
   }
 });
 
@@ -76,25 +102,45 @@ export function request(
   onEvent?: Handler,
 ): Promise<SidecarEvent> {
   const id = nextId(req.op);
-  const full: Request = { ...req, id };
+  const full: Request = { ...req, id, protocol: PROTOCOL_VERSION };
   startActivity(req.op);
   return new Promise((resolve, reject) => {
-    handlers.set(id, (e) => {
+    let settled = false;
+    const handle = (e: SidecarEvent) => {
       onEvent?.(e);
-      if (e.ev === "done") {
+      if (e.ev === "done" && !settled) {
+        settled = true;
         endActivity();
         resolve(e);
       }
-    });
-    void invoke("send_request", { line: JSON.stringify(full) }).catch((error) => {
+    };
+    const timeoutMs = LONG_TIMEOUT_OPS.has(req.op) ? 15 * 60_000 : DEFAULT_TIMEOUT_MS;
+    const timer = setTimeout(() => {
+      const record = handlers.get(id);
+      if (!record || record.terminal) return;
+      record.terminal = true;
       handlers.delete(id);
-      endActivity();
-      reject(error);
+      const outcome = record.destructive ? "unknown" : "timeout";
+      handle({ id, ev: "done", ok: false, outcome, retryable: !record.destructive } as SidecarEvent);
+      if (!record.destructive) void cancel(id).catch(() => undefined);
+    }, timeoutMs);
+    handlers.set(id, { handle, timer, terminal: false, destructive: DESTRUCTIVE_OPS.has(req.op) });
+    void invoke("send_request", { line: JSON.stringify(full) }).catch((error) => {
+      const record = handlers.get(id);
+      if (record) clearTimeout(record.timer);
+      handlers.delete(id);
+      if (!settled) {
+        settled = true;
+        endActivity();
+        reject(error);
+      }
     });
   });
 }
 
 /** Çalışan bir isteği iptal et. */
 export function cancel(id: string) {
-  return invoke("send_request", { line: JSON.stringify({ id, op: "cancel" }) });
+  return invoke("send_request", {
+    line: JSON.stringify({ id, op: "cancel", protocol: PROTOCOL_VERSION }),
+  });
 }
