@@ -75,7 +75,8 @@ if os.name == "nt":
         # detect Shift held for letter keys via uppercase already (msvcrt returns upper when shifted)
         return ch  # caller does .upper() comparisons
 else:  # pragma: no cover
-    import termios, tty
+    import termios
+    import tty
 
     def read_key() -> str:  # type: ignore[misc]
         fd = sys.stdin.fileno()
@@ -127,7 +128,7 @@ PENDING_UPDATE_FILE = WMOLE_DIR / "pending_update.json"
 def human_size(n: int) -> str:
     for unit, div in (("TB", 1024**4), ("GB", 1024**3), ("MB", 1024**2), ("KB", 1024)):
         if n >= div:
-            return f"{n/div:.1f} {unit}"
+            return f"{n / div:.1f} {unit}"
     return f"{n} B"
 
 
@@ -170,8 +171,7 @@ def prune_reparse_dirs(dirpath: str, dirnames: List[str]) -> None:
     kept = []
     for d in dirnames:
         try:
-            attrs = os.stat(os.path.join(dirpath, d),
-                            follow_symlinks=False).st_file_attributes  # type: ignore[attr-defined]
+            attrs = os.stat(os.path.join(dirpath, d), follow_symlinks=False).st_file_attributes  # type: ignore[attr-defined]
             if attrs & _REPARSE_ATTR:
                 continue
         except (AttributeError, OSError):
@@ -180,8 +180,13 @@ def prune_reparse_dirs(dirpath: str, dirnames: List[str]) -> None:
     dirnames[:] = kept
 
 
-def dir_size(path: Path, on_progress=None, max_seconds: Optional[float] = None,
-             max_files: Optional[int] = None, on_truncated=None) -> int:
+def dir_size(
+    path: Path,
+    on_progress=None,
+    max_seconds: Optional[float] = None,
+    max_files: Optional[int] = None,
+    on_truncated=None,
+) -> int:
     """Total bytes under `path`.
 
     Never descends into reparse points (see is_reparse_dirent) — their content
@@ -281,9 +286,12 @@ def cache_set(cache: dict, path: Path, mtime: float, size: int) -> None:
 PURGE_DIR_BUDGET_SECONDS = 20.0
 
 
-def sized_dir(path: Path, cache: Optional[dict] = None,
-              lock: "Optional[threading.Lock]" = None,
-              max_seconds: Optional[float] = None) -> tuple[int, bool]:
+def sized_dir(
+    path: Path,
+    cache: Optional[dict] = None,
+    lock: "Optional[threading.Lock]" = None,
+    max_seconds: Optional[float] = None,
+) -> tuple[int, bool]:
     """Size a dir via the mtime cache. Returns (size, truncated).
 
     `truncated` is True when `max_seconds` cut the walk short, meaning the size
@@ -302,8 +310,7 @@ def sized_dir(path: Path, cache: Optional[dict] = None,
         if hit is not None:
             return hit, False
     cut = []
-    size = dir_size(path, max_seconds=max_seconds,
-                    on_truncated=lambda: cut.append(True))
+    size = dir_size(path, max_seconds=max_seconds, on_truncated=lambda: cut.append(True))
     truncated = bool(cut)
     if cache is not None and mtime is not None and not truncated:
         if lock is not None:
@@ -314,8 +321,9 @@ def sized_dir(path: Path, cache: Optional[dict] = None,
     return size, truncated
 
 
-def should_redraw(last_draw: float, now: float, scanner_active: bool,
-                  min_interval: float = 0.08) -> bool:
+def should_redraw(
+    last_draw: float, now: float, scanner_active: bool, min_interval: float = 0.08
+) -> bool:
     """Throttle in-loop re-renders: only redraw while scanning and after min_interval."""
     if not scanner_active:
         return False
@@ -325,84 +333,86 @@ def should_redraw(last_draw: float, now: float, scanner_active: bool,
 # ---------- i18n ----------
 STRINGS: Dict[str, Dict[str, str]] = {
     "tr": {
-        "title_analyze":    "Disk Analizi",
-        "title_inside":     "İçinde · {name}",
-        "title_status":     "Sistem Durumu",
-        "title_optimize":   "Sistem Optimize",
-        "title_uninstall":  "Programları Kaldır",
-        "free_suffix":      "({free:.1f} GB boş)",
-        "mode_trash":       "🗑 Geri Dönüşüm Kutusu",
-        "mode_permanent":   "⚠ KALICI MOD",
-        "mode_dry_run":     "KURU ÇALIŞTIRMA",
-        "hint_cats":        "Temizlenecek kategorileri seç — [Boşluk] işaretle, [D] sil, [K] kalıcı mod, [R] yenile, [/] komutlar, [?] yardım, [\\] dil",
-        "hint_items":       "İçinde {name} — [Boşluk] işaretle, [D] sil",
-        "hint_fs":          "[Enter] aç · [G] büyük dosyalar · [V] sürücüler · [O] Explorer · [Boşluk]/[D] sil · [/] komutlar · [?] yardım",
-        "hint_status":      "Canlı sistem durumu (otomatik yenilenir) — [Q]/[Esc] geri",
-        "hint_optimize":    "Optimize işlemleri — [Enter] çalıştır (yönetici gerekebilir)",
-        "hint_uninstall":   "Kurulu programlar — [Enter] kaldır, [L] artıklar",
-        "confirm_header":   "Aşağıdaki {n} öğe {action} ({size}).",
-        "confirm_keys":     "[Enter] onayla   ·   [Esc] iptal",
-        "and_more":         "  … ve {n} öğe daha",
+        "title_analyze": "Disk Analizi",
+        "title_inside": "İçinde · {name}",
+        "title_status": "Sistem Durumu",
+        "title_optimize": "Sistem Optimize",
+        "title_uninstall": "Programları Kaldır",
+        "free_suffix": "({free:.1f} GB boş)",
+        "mode_trash": "🗑 Geri Dönüşüm Kutusu",
+        "mode_permanent": "⚠ KALICI MOD",
+        "mode_dry_run": "KURU ÇALIŞTIRMA",
+        "hint_cats": "Temizlenecek kategorileri seç — [Boşluk] işaretle, [D] sil, [K] kalıcı mod, [R] yenile, [/] komutlar, [?] yardım, [\\] dil",
+        "hint_items": "İçinde {name} — [Boşluk] işaretle, [D] sil",
+        "hint_fs": "[Enter] aç · [G] büyük dosyalar · [V] sürücüler · [O] Explorer · [Boşluk]/[D] sil · [/] komutlar · [?] yardım",
+        "hint_status": "Canlı sistem durumu (otomatik yenilenir) — [Q]/[Esc] geri",
+        "hint_optimize": "Optimize işlemleri — [Enter] çalıştır (yönetici gerekebilir)",
+        "hint_uninstall": "Kurulu programlar — [Enter] kaldır, [L] artıklar",
+        "confirm_header": "Aşağıdaki {n} öğe {action} ({size}).",
+        "confirm_keys": "[Enter] onayla   ·   [Esc] iptal",
+        "and_more": "  … ve {n} öğe daha",
         "protected_header": "⛔ Atlanacak (korumalı) {n} öğe:",
-        "act_trash":        "Geri Dönüşüm Kutusu'na taşınacak",
-        "act_permanent":    "KALICI olarak silinecek",
-        "act_dry_run":      "Kuru çalıştırma · silmiş gibi yapılacak",
-        "done_ok":          "✅ {n} öğe taşındı · {size} kazanıldı",
-        "done_perm":        "✅ {n} öğe kalıcı silindi · {size} kazanıldı",
-        "done_dry":         "ℹ Kuru çalıştırma · {n} öğe ({size}) silinecekti, hiçbir şey değişmedi",
-        "done_errs":        "  ({n} hata)",
-        "cancelled":        "Silme iptal edildi (Enter dışında bir tuşa basıldı).",
-        "confirm_title":    "  SİLME ONAYI  ",
+        "act_trash": "Geri Dönüşüm Kutusu'na taşınacak",
+        "act_permanent": "KALICI olarak silinecek",
+        "act_dry_run": "Kuru çalıştırma · silmiş gibi yapılacak",
+        "done_ok": "✅ {n} öğe taşındı · {size} kazanıldı",
+        "done_perm": "✅ {n} öğe kalıcı silindi · {size} kazanıldı",
+        "done_dry": "ℹ Kuru çalıştırma · {n} öğe ({size}) silinecekti, hiçbir şey değişmedi",
+        "done_errs": "  ({n} hata)",
+        "cancelled": "Silme iptal edildi (Enter dışında bir tuşa basıldı).",
+        "confirm_title": "  SİLME ONAYI  ",
         "nothing_selected": "Hiçbir şey seçilmedi.",
-        "permanent_on":     "⚠ KALICI MOD AÇIK — sonraki silme geri alınamaz!",
-        "permanent_off":    "Güvenli mod (Geri Dönüşüm Kutusu).",
-        "lang_switched":    "Dil: Türkçe",
-        "footer_more":      "↑ üstte {n} öğe daha",
-        "footer_less":      "↓ altta {n} öğe daha",
-        "title_help":       "Yardım & Özellikler",
-        "hint_help":        "[↑/↓] kaydır  ·  [Q]/[Esc] kapat",
-        "help_key":         "H Yardım",
+        "permanent_on": "⚠ KALICI MOD AÇIK — sonraki silme geri alınamaz!",
+        "permanent_off": "Güvenli mod (Geri Dönüşüm Kutusu).",
+        "lang_switched": "Dil: Türkçe",
+        "footer_more": "↑ üstte {n} öğe daha",
+        "footer_less": "↓ altta {n} öğe daha",
+        "title_help": "Yardım & Özellikler",
+        "hint_help": "[↑/↓] kaydır  ·  [Q]/[Esc] kapat",
+        "help_key": "H Yardım",
     },
     "en": {
-        "title_analyze":    "Analyze Disk",
-        "title_inside":     "Inside · {name}",
-        "title_status":     "System Status",
-        "title_optimize":   "System Optimize",
-        "title_uninstall":  "Uninstall Programs",
-        "free_suffix":      "({free:.1f} GB free)",
-        "mode_trash":       "🗑 Recycle Bin",
-        "mode_permanent":   "⚠ PERMANENT MODE",
-        "mode_dry_run":     "DRY-RUN",
-        "hint_cats":        "Select cleanable categories — [Space] pick, [D] delete, [K] permanent, [R] refresh, [/] commands, [?] help, [\\] lang",
-        "hint_items":       "Inside {name} — [Space] pick, [D] delete",
-        "hint_fs":          "[Enter] open · [G] large files · [V] drives · [O] Explorer · [Space]/[D] delete · [/] commands · [?] help",
-        "hint_status":      "Live system status (auto-refresh) — [Q]/[Esc] back",
-        "hint_optimize":    "Optimize actions — [Enter] run (admin may be required)",
-        "hint_uninstall":   "Installed programs — [Enter] uninstall, [L] leftovers",
-        "confirm_header":   "The following {n} item(s) will be {action} ({size}).",
-        "confirm_keys":     "[Enter] confirm   ·   [Esc] cancel",
-        "and_more":         "  … and {n} more",
+        "title_analyze": "Analyze Disk",
+        "title_inside": "Inside · {name}",
+        "title_status": "System Status",
+        "title_optimize": "System Optimize",
+        "title_uninstall": "Uninstall Programs",
+        "free_suffix": "({free:.1f} GB free)",
+        "mode_trash": "🗑 Recycle Bin",
+        "mode_permanent": "⚠ PERMANENT MODE",
+        "mode_dry_run": "DRY-RUN",
+        "hint_cats": "Select cleanable categories — [Space] pick, [D] delete, [K] permanent, [R] refresh, [/] commands, [?] help, [\\] lang",
+        "hint_items": "Inside {name} — [Space] pick, [D] delete",
+        "hint_fs": "[Enter] open · [G] large files · [V] drives · [O] Explorer · [Space]/[D] delete · [/] commands · [?] help",
+        "hint_status": "Live system status (auto-refresh) — [Q]/[Esc] back",
+        "hint_optimize": "Optimize actions — [Enter] run (admin may be required)",
+        "hint_uninstall": "Installed programs — [Enter] uninstall, [L] leftovers",
+        "confirm_header": "The following {n} item(s) will be {action} ({size}).",
+        "confirm_keys": "[Enter] confirm   ·   [Esc] cancel",
+        "and_more": "  … and {n} more",
         "protected_header": "⛔ Protected — will be skipped ({n}):",
-        "act_trash":        "moved to the Recycle Bin",
-        "act_permanent":    "PERMANENTLY DELETED",
-        "act_dry_run":      "dry-run · nothing will change",
-        "done_ok":          "✅ {n} item(s) moved · {size} reclaimed",
-        "done_perm":        "✅ {n} item(s) permanently deleted · {size} reclaimed",
-        "done_dry":         "ℹ Dry-run · would delete {n} item(s) ({size}), nothing changed",
-        "done_errs":        "  ({n} error(s))",
-        "cancelled":        "Delete cancelled (a key other than Enter was pressed).",
-        "confirm_title":    "  DELETE CONFIRMATION  ",
+        "act_trash": "moved to the Recycle Bin",
+        "act_permanent": "PERMANENTLY DELETED",
+        "act_dry_run": "dry-run · nothing will change",
+        "done_ok": "✅ {n} item(s) moved · {size} reclaimed",
+        "done_perm": "✅ {n} item(s) permanently deleted · {size} reclaimed",
+        "done_dry": "ℹ Dry-run · would delete {n} item(s) ({size}), nothing changed",
+        "done_errs": "  ({n} error(s))",
+        "cancelled": "Delete cancelled (a key other than Enter was pressed).",
+        "confirm_title": "  DELETE CONFIRMATION  ",
         "nothing_selected": "Nothing selected.",
-        "permanent_on":     "⚠ PERMANENT MODE ON — next delete cannot be undone!",
-        "permanent_off":    "Safe mode (Recycle Bin).",
-        "lang_switched":    "Language: English",
-        "footer_more":      "↑ {n} more above",
-        "footer_less":      "↓ {n} more below",
-        "title_help":       "Help & Features",
-        "hint_help":        "[↑/↓] scroll  ·  [Q]/[Esc] close",
-        "help_key":         "H Help",
+        "permanent_on": "⚠ PERMANENT MODE ON — next delete cannot be undone!",
+        "permanent_off": "Safe mode (Recycle Bin).",
+        "lang_switched": "Language: English",
+        "footer_more": "↑ {n} more above",
+        "footer_less": "↓ {n} more below",
+        "title_help": "Help & Features",
+        "hint_help": "[↑/↓] scroll  ·  [Q]/[Esc] close",
+        "help_key": "H Help",
     },
 }
+
+
 def _detect_system_lang() -> str:
     """Best-effort detection of the OS UI language.
 
@@ -414,10 +424,12 @@ def _detect_system_lang() -> str:
     if os.name == "nt":
         try:
             import ctypes
+
             for fn in ("GetUserDefaultUILanguage", "GetUserDefaultLCID"):
                 try:
                     lcid = getattr(ctypes.windll.kernel32, fn)()
                     import locale as _loc
+
                     code = _loc.windows_locale.get(lcid, "")
                     if code:
                         break
@@ -429,6 +441,7 @@ def _detect_system_lang() -> str:
     if not code:
         try:
             import locale as _loc
+
             code = (_loc.getlocale()[0] or "") or os.environ.get("LANG", "")
         except Exception:
             code = os.environ.get("LANG", "")
@@ -487,8 +500,11 @@ _SYSTEM_ROOT = os.environ.get("SystemRoot", r"C:\Windows").rstrip("\\/").lower()
 CLEANABLE_SYSTEM_DIRS = (
     _SYSTEM_ROOT + r"\temp",
     _SYSTEM_ROOT + r"\softwaredistribution\download",
-    _SYSTEM_ROOT + (r"\serviceprofiles\networkservice\appdata\local\microsoft"
-                    r"\windows\deliveryoptimization\cache"),
+    _SYSTEM_ROOT
+    + (
+        r"\serviceprofiles\networkservice\appdata\local\microsoft"
+        r"\windows\deliveryoptimization\cache"
+    ),
 )
 
 
@@ -533,8 +549,13 @@ def load_config() -> dict:
         "quarantine_enabled": True,
         "quarantine_retention_days": 30,
         "protected_processes": [
-            "code.exe", "devenv.exe", "docker desktop.exe", "com.docker.backend.exe",
-            "postgres.exe", "mysqld.exe", "mongod.exe",
+            "code.exe",
+            "devenv.exe",
+            "docker desktop.exe",
+            "com.docker.backend.exe",
+            "postgres.exe",
+            "mysqld.exe",
+            "mongod.exe",
         ],
     }
     if not path_exists(CONFIG_FILE):
@@ -657,8 +678,9 @@ class ScanFilter:
 
     def __init__(self, whitelist: Optional[List[Path]] = None) -> None:
         cfg = load_config()
-        self.protected = [str(Path(v)).rstrip("\\/").lower()
-                          for v in cfg.get("protected_defaults", [])]
+        self.protected = [
+            str(Path(v)).rstrip("\\/").lower() for v in cfg.get("protected_defaults", [])
+        ]
         self.denylist = [str(d).rstrip("\\/").lower() for d in load_denylist()]
         self.denylist = [d for d in self.denylist if d]
         self.whitelist = [str(w).rstrip("\\/").lower() for w in (whitelist or [])]
@@ -691,7 +713,8 @@ class ScanFilter:
             if raw == d or raw.startswith(d + "\\"):
                 return True
         if not _inside_cleanable_system_dir(raw) and any(
-                raw == base or raw.startswith(base + "\\") for base in self.protected):
+            raw == base or raw.startswith(base + "\\") for base in self.protected
+        ):
             return True
         if ".git" in [part.lower() for part in p.parts]:
             return True
@@ -740,7 +763,9 @@ def log_security_event(event: str, details: dict) -> None:
             if previous is None:
                 previous = "0" * 64
                 if path_exists(SECURITY_LOG_FILE):
-                    lines = SECURITY_LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+                    lines = SECURITY_LOG_FILE.read_text(
+                        encoding="utf-8", errors="replace"
+                    ).splitlines()
                     if lines:
                         previous = str(json.loads(lines[-1]).get("signature", previous))
             record = {
@@ -750,7 +775,9 @@ def log_security_event(event: str, details: dict) -> None:
                 "previous": previous,
             }
             payload = json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-            signature = hmac.new(_security_key(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+            signature = hmac.new(
+                _security_key(), payload.encode("utf-8"), hashlib.sha256
+            ).hexdigest()
             record["signature"] = signature
             with SECURITY_LOG_FILE.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -763,8 +790,11 @@ def read_security_log(limit: int = 100) -> tuple[list[dict], bool]:
     if not path_exists(SECURITY_LOG_FILE):
         return [], True
     try:
-        rows = [json.loads(line) for line in SECURITY_LOG_FILE.read_text(
-            encoding="utf-8", errors="strict").splitlines() if line.strip()]
+        rows = [
+            json.loads(line)
+            for line in SECURITY_LOG_FILE.read_text(encoding="utf-8", errors="strict").splitlines()
+            if line.strip()
+        ]
         previous = "0" * 64
         valid = True
         key = _security_key()
@@ -776,7 +806,7 @@ def read_security_log(limit: int = 100) -> tuple[list[dict], bool]:
             valid = valid and hmac.compare_digest(signature, expected)
             row["signature"] = signature
             previous = signature
-        return rows[-max(1, limit):], valid
+        return rows[-max(1, limit) :], valid
     except Exception:
         return [], False
 
@@ -797,8 +827,20 @@ def git_delete_risk(path: Path) -> str:
     try:
         relative = path.resolve().relative_to(repo.resolve())
         result = subprocess.run(
-            ["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=all", "--", str(relative)],
-            capture_output=True, text=True, timeout=15, shell=False,
+            [
+                "git",
+                "-C",
+                str(repo),
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                str(relative),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            shell=False,
         )
         if result.returncode != 0:
             return "git status could not verify target"
@@ -842,8 +884,10 @@ def _move_to_quarantine(path: Path, target: Path) -> Optional[str]:
         os.rename(path, target)
         return None
     except OSError:
-        same_volume = (os.path.splitdrive(os.path.abspath(path))[0].lower()
-                       == os.path.splitdrive(os.path.abspath(target))[0].lower())
+        same_volume = (
+            os.path.splitdrive(os.path.abspath(path))[0].lower()
+            == os.path.splitdrive(os.path.abspath(target))[0].lower()
+        )
         if same_volume:
             raise
     is_tree = path.is_dir() and not _is_reparse_point(path)
@@ -868,13 +912,20 @@ def quarantine_path(path: Path, size: int = 0) -> str | None:
     entry_id = f"{int(time.time())}-{secrets.token_hex(4)}"
     target_dir = QUARANTINE_DIR / entry_id
     target = target_dir / path.name
+
     def record() -> None:
         with _QUARANTINE_LOCK:
             entries = _quarantine_entries()
-            entries.append({
-                "id": entry_id, "original": str(path), "stored": str(target),
-                "size": size, "created": int(time.time()), "name": path.name,
-            })
+            entries.append(
+                {
+                    "id": entry_id,
+                    "original": str(path),
+                    "stored": str(target),
+                    "size": size,
+                    "created": int(time.time()),
+                    "name": path.name,
+                }
+            )
             _save_quarantine_entries(entries)
 
     try:
@@ -896,8 +947,10 @@ def _use_quarantine(path: Path) -> bool:
     Bin instead."""
     if not load_config().get("quarantine_enabled", True):
         return False
-    return (os.path.splitdrive(os.path.abspath(path))[0].lower()
-            == os.path.splitdrive(os.path.abspath(QUARANTINE_DIR))[0].lower())
+    return (
+        os.path.splitdrive(os.path.abspath(path))[0].lower()
+        == os.path.splitdrive(os.path.abspath(QUARANTINE_DIR))[0].lower()
+    )
 
 
 def empty_quarantine() -> dict:
@@ -927,7 +980,8 @@ def restore_quarantine(entry_id: str) -> str | None:
         shutil.move(str(source), str(destination))
         with _QUARANTINE_LOCK:
             _save_quarantine_entries(
-                [row for row in _quarantine_entries() if row.get("id") != entry_id])
+                [row for row in _quarantine_entries() if row.get("id") != entry_id]
+            )
         shutil.rmtree(QUARANTINE_DIR / entry_id, ignore_errors=True)
         log_security_event("quarantine-restored", {"id": entry_id, "path": str(destination)})
         return None
@@ -1034,8 +1088,9 @@ def delete_path(path: Path, use_trash: bool, dry_run: bool, known_size: int = 0)
         return str(e)
 
 
-def trash_paths_batch(paths: List[Path],
-                      sizes: Optional[Dict[str, int]] = None) -> Dict[str, Optional[str]]:
+def trash_paths_batch(
+    paths: List[Path], sizes: Optional[Dict[str, int]] = None
+) -> Dict[str, Optional[str]]:
     """Send many paths to the Recycle Bin in a single IFileOperation batch.
 
     send2trash accepts a list and processes it in one COM operation, which is
@@ -1114,78 +1169,318 @@ class Category:
 
 # ---------- Category catalogs ----------
 DEV_FOLDER_CATEGORIES: Dict[str, str] = {
-    "node_modules":   "node_modules",
-    ".venv":          "Python venvs",
-    "venv":           "Python venvs",
-    "env":            "Python venvs",
-    "__pycache__":    "Python __pycache__",
-    ".pytest_cache":  "pytest cache",
-    ".mypy_cache":    "mypy cache",
-    ".ruff_cache":    "ruff cache",
-    ".tox":           "tox envs",
-    "target":         "Rust/Java target",
-    "build":          "Build outputs",
-    "dist":           "Dist outputs",
-    "out":            "Build outputs",
-    ".next":          "Next.js .next",
-    ".nuxt":          "Nuxt .nuxt",
-    ".turbo":         "Turbo cache",
-    ".parcel-cache":  "Parcel cache",
-    ".angular":       "Angular cache",
-    ".gradle":        "Gradle project cache",
-    ".idea":          "JetBrains .idea",
-    ".vs":            "Visual Studio .vs",
-    "obj":            ".NET obj/",
+    "node_modules": "node_modules",
+    ".venv": "Python venvs",
+    "venv": "Python venvs",
+    "env": "Python venvs",
+    "__pycache__": "Python __pycache__",
+    ".pytest_cache": "pytest cache",
+    ".mypy_cache": "mypy cache",
+    ".ruff_cache": "ruff cache",
+    ".tox": "tox envs",
+    "target": "Rust/Java target",
+    "build": "Build outputs",
+    "dist": "Dist outputs",
+    "out": "Build outputs",
+    ".next": "Next.js .next",
+    ".nuxt": "Nuxt .nuxt",
+    ".turbo": "Turbo cache",
+    ".parcel-cache": "Parcel cache",
+    ".angular": "Angular cache",
+    ".gradle": "Gradle project cache",
+    ".idea": "JetBrains .idea",
+    ".vs": "Visual Studio .vs",
+    "obj": ".NET obj/",
 }
 
 # (key, title, desc, path, safe_default, icon)
 FIXED_PATH_CATEGORIES = [
-    ("npm-cache",      "npm cache",           "%APPDATA%\\npm-cache",                  APPDATA / "npm-cache",                                                  True,  "📦"),
-    ("pip-cache",      "pip cache",           "%LOCALAPPDATA%\\pip\\Cache",            LOCALAPPDATA / "pip" / "Cache",                                         True,  "🐍"),
-    ("yarn-cache",     "Yarn cache",          "%LOCALAPPDATA%\\Yarn\\Cache",           LOCALAPPDATA / "Yarn" / "Cache",                                        True,  "🧶"),
-    ("pnpm-store",     "pnpm store",          "%LOCALAPPDATA%\\pnpm\\store",           LOCALAPPDATA / "pnpm" / "store",                                        True,  "📦"),
-    ("cargo-cache",    "Cargo cache",         "~\\.cargo\\registry\\cache",            USER / ".cargo" / "registry" / "cache",                                 True,  "🦀"),
-    ("gradle-cache",   "Gradle global cache", "~\\.gradle\\caches",                    USER / ".gradle" / "caches",                                            True,  "🐘"),
-    ("maven-repo",     "Maven local repo",    "~\\.m2\\repository",                    USER / ".m2" / "repository",                                            False, "☕"),
-    ("nuget-cache",    "NuGet packages",      "~\\.nuget\\packages",                   USER / ".nuget" / "packages",                                           False, "🔷"),
-    ("go-cache",       "Go build cache",      "~\\AppData\\Local\\go-build",           LOCALAPPDATA / "go-build",                                              True,  "🐹"),
-    ("chrome-cache",   "Chrome cache",        "Chrome Default\\Cache",                 LOCALAPPDATA / "Google" / "Chrome" / "User Data" / "Default" / "Cache", True,  "🌐"),
-    ("edge-cache",     "Edge cache",          "Edge Default\\Cache",                   LOCALAPPDATA / "Microsoft" / "Edge" / "User Data" / "Default" / "Cache",True,  "🌐"),
-    ("user-temp",      "User Temp",           "%TEMP%",                                TEMP,                                                                   True,  "🗑"),
-    ("win-temp",       "Windows Temp",        "C:\\Windows\\Temp",                     Path(r"C:\Windows\Temp"),                                               True,  "🗑"),
-    ("win-update",     "Windows Update cache","C:\\Windows\\SoftwareDistribution\\Download", Path(r"C:\Windows\SoftwareDistribution\Download"),                False, "🪟"),
-    ("crash-dumps",    "Crash dumps",         "%LOCALAPPDATA%\\CrashDumps",            LOCALAPPDATA / "CrashDumps",                                            True,  "💥"),
+    ("npm-cache", "npm cache", "%APPDATA%\\npm-cache", APPDATA / "npm-cache", True, "📦"),
+    (
+        "pip-cache",
+        "pip cache",
+        "%LOCALAPPDATA%\\pip\\Cache",
+        LOCALAPPDATA / "pip" / "Cache",
+        True,
+        "🐍",
+    ),
+    (
+        "yarn-cache",
+        "Yarn cache",
+        "%LOCALAPPDATA%\\Yarn\\Cache",
+        LOCALAPPDATA / "Yarn" / "Cache",
+        True,
+        "🧶",
+    ),
+    (
+        "pnpm-store",
+        "pnpm store",
+        "%LOCALAPPDATA%\\pnpm\\store",
+        LOCALAPPDATA / "pnpm" / "store",
+        True,
+        "📦",
+    ),
+    (
+        "cargo-cache",
+        "Cargo cache",
+        "~\\.cargo\\registry\\cache",
+        USER / ".cargo" / "registry" / "cache",
+        True,
+        "🦀",
+    ),
+    (
+        "gradle-cache",
+        "Gradle global cache",
+        "~\\.gradle\\caches",
+        USER / ".gradle" / "caches",
+        True,
+        "🐘",
+    ),
+    (
+        "maven-repo",
+        "Maven local repo",
+        "~\\.m2\\repository",
+        USER / ".m2" / "repository",
+        False,
+        "☕",
+    ),
+    (
+        "nuget-cache",
+        "NuGet packages",
+        "~\\.nuget\\packages",
+        USER / ".nuget" / "packages",
+        False,
+        "🔷",
+    ),
+    (
+        "go-cache",
+        "Go build cache",
+        "~\\AppData\\Local\\go-build",
+        LOCALAPPDATA / "go-build",
+        True,
+        "🐹",
+    ),
+    (
+        "chrome-cache",
+        "Chrome cache",
+        "Chrome Default\\Cache",
+        LOCALAPPDATA / "Google" / "Chrome" / "User Data" / "Default" / "Cache",
+        True,
+        "🌐",
+    ),
+    (
+        "edge-cache",
+        "Edge cache",
+        "Edge Default\\Cache",
+        LOCALAPPDATA / "Microsoft" / "Edge" / "User Data" / "Default" / "Cache",
+        True,
+        "🌐",
+    ),
+    ("user-temp", "User Temp", "%TEMP%", TEMP, True, "🗑"),
+    ("win-temp", "Windows Temp", "C:\\Windows\\Temp", Path(r"C:\Windows\Temp"), True, "🗑"),
+    (
+        "win-update",
+        "Windows Update cache",
+        "C:\\Windows\\SoftwareDistribution\\Download",
+        Path(r"C:\Windows\SoftwareDistribution\Download"),
+        False,
+        "🪟",
+    ),
+    (
+        "crash-dumps",
+        "Crash dumps",
+        "%LOCALAPPDATA%\\CrashDumps",
+        LOCALAPPDATA / "CrashDumps",
+        True,
+        "💥",
+    ),
     # NEW developer-aware locations (mole-style)
-    ("jetbrains",      "JetBrains caches",    "%LOCALAPPDATA%\\JetBrains",             LOCALAPPDATA / "JetBrains",                                             True,  "💡"),
+    (
+        "jetbrains",
+        "JetBrains caches",
+        "%LOCALAPPDATA%\\JetBrains",
+        LOCALAPPDATA / "JetBrains",
+        True,
+        "💡",
+    ),
     # Holds per-workspace extension state (AI chat history, local history); not a cache.
-    ("vscode-storage", "VS Code workspace storage","%APPDATA%\\Code\\User\\workspaceStorage", APPDATA / "Code" / "User" / "workspaceStorage",                  False, "🟦"),
-    ("vscode-cache",   "VS Code cache",       "%APPDATA%\\Code\\Cache",                APPDATA / "Code" / "Cache",                                             True,  "🟦"),
-    ("puppeteer",      "Puppeteer Chromium",  "~\\.cache\\puppeteer",                  USER / ".cache" / "puppeteer",                                          False, "🎭"),
-    ("playwright",     "Playwright browsers", "%LOCALAPPDATA%\\ms-playwright",         LOCALAPPDATA / "ms-playwright",                                         False, "🎭"),
-    ("docker-desktop", "Docker Desktop data", "%LOCALAPPDATA%\\Docker",                LOCALAPPDATA / "Docker",                                                False, "🐋"),
-    ("electron-cache", "Electron cache",      "~\\.electron",                          USER / ".electron",                                                     True,  "⚛"),
-    ("conda-pkgs",     "Conda pkgs cache",    "~\\anaconda3\\pkgs",                    USER / "anaconda3" / "pkgs",                                            False, "🅒"),
+    (
+        "vscode-storage",
+        "VS Code workspace storage",
+        "%APPDATA%\\Code\\User\\workspaceStorage",
+        APPDATA / "Code" / "User" / "workspaceStorage",
+        False,
+        "🟦",
+    ),
+    (
+        "vscode-cache",
+        "VS Code cache",
+        "%APPDATA%\\Code\\Cache",
+        APPDATA / "Code" / "Cache",
+        True,
+        "🟦",
+    ),
+    (
+        "puppeteer",
+        "Puppeteer Chromium",
+        "~\\.cache\\puppeteer",
+        USER / ".cache" / "puppeteer",
+        False,
+        "🎭",
+    ),
+    (
+        "playwright",
+        "Playwright browsers",
+        "%LOCALAPPDATA%\\ms-playwright",
+        LOCALAPPDATA / "ms-playwright",
+        False,
+        "🎭",
+    ),
+    (
+        "docker-desktop",
+        "Docker Desktop data",
+        "%LOCALAPPDATA%\\Docker",
+        LOCALAPPDATA / "Docker",
+        False,
+        "🐋",
+    ),
+    ("electron-cache", "Electron cache", "~\\.electron", USER / ".electron", True, "⚛"),
+    (
+        "conda-pkgs",
+        "Conda pkgs cache",
+        "~\\anaconda3\\pkgs",
+        USER / "anaconda3" / "pkgs",
+        False,
+        "🅒",
+    ),
 ]
 
 
 def build_fixed_path_categories() -> List[tuple]:
     """Return Windows cleanup categories, including optional app/browser caches."""
     extra = [
-        ("firefox-cache",   "Firefox cache",       "Firefox profile cache2 folders",        LOCALAPPDATA / "Mozilla" / "Firefox" / "Profiles",                    True,  "🌐"),
-        ("brave-cache",    "Brave cache",         "Brave Default\\Cache",                 LOCALAPPDATA / "BraveSoftware" / "Brave-Browser" / "User Data" / "Default" / "Cache", True, "🌐"),
-        ("opera-cache",    "Opera cache",         "Opera Stable\\Cache",                  APPDATA / "Opera Software" / "Opera Stable" / "Cache",                 True,  "🌐"),
-        ("vivaldi-cache",  "Vivaldi cache",       "Vivaldi Default\\Cache",               LOCALAPPDATA / "Vivaldi" / "User Data" / "Default" / "Cache",           True,  "🌐"),
-        ("discord-cache",  "Discord cache",       "%APPDATA%\\discord\\Cache",            APPDATA / "discord" / "Cache",                                         True,  "💬"),
-        ("slack-cache",    "Slack cache",         "%APPDATA%\\Slack\\Cache",              APPDATA / "Slack" / "Cache",                                           True,  "💬"),
-        ("teams-cache",    "Teams cache",         "%APPDATA%\\Microsoft\\Teams\\Cache",    APPDATA / "Microsoft" / "Teams" / "Cache",                            True,  "💬"),
-        ("spotify-cache",  "Spotify cache",       "%LOCALAPPDATA%\\Spotify\\Storage",     LOCALAPPDATA / "Spotify" / "Storage",                                  True,  "🎵"),
-        ("adobe-cache",    "Adobe media cache",   "%APPDATA%\\Adobe\\Common\\Media Cache", APPDATA / "Adobe" / "Common" / "Media Cache",                         True,  "🎬"),
-        ("thumbnail-cache","Windows thumbnail cache","Explorer thumbcache db",             LOCALAPPDATA / "Microsoft" / "Windows" / "Explorer",                   True,  "🖼"),
-        ("directx-shader-cache", "DirectX shader cache", "%LOCALAPPDATA%\\D3DSCache",       LOCALAPPDATA / "D3DSCache",                                            True,  "🎮"),
-        ("wer-reports",    "Windows Error Reports","%LOCALAPPDATA%\\Microsoft\\Windows\\WER", LOCALAPPDATA / "Microsoft" / "Windows" / "WER",                     True,  "🧾"),
-        ("store-cache",    "Microsoft Store cache", "%LOCALAPPDATA%\\Packages\\Microsoft.WindowsStore*", LOCALAPPDATA / "Packages", True, "🏪"),
-        ("wsl-logs",       "WSL logs", "%LOCALAPPDATA%\\Packages\\*\\LocalState\\*.log", LOCALAPPDATA / "Packages", False, "🐧"),
-        ("delivery-optimization", "Delivery Optimization cache", "Windows delivery cache", Path(r"C:\Windows\ServiceProfiles\NetworkService\AppData\Local\Microsoft\Windows\DeliveryOptimization\Cache"), False, "🪟"),
+        (
+            "firefox-cache",
+            "Firefox cache",
+            "Firefox profile cache2 folders",
+            LOCALAPPDATA / "Mozilla" / "Firefox" / "Profiles",
+            True,
+            "🌐",
+        ),
+        (
+            "brave-cache",
+            "Brave cache",
+            "Brave Default\\Cache",
+            LOCALAPPDATA / "BraveSoftware" / "Brave-Browser" / "User Data" / "Default" / "Cache",
+            True,
+            "🌐",
+        ),
+        (
+            "opera-cache",
+            "Opera cache",
+            "Opera Stable\\Cache",
+            APPDATA / "Opera Software" / "Opera Stable" / "Cache",
+            True,
+            "🌐",
+        ),
+        (
+            "vivaldi-cache",
+            "Vivaldi cache",
+            "Vivaldi Default\\Cache",
+            LOCALAPPDATA / "Vivaldi" / "User Data" / "Default" / "Cache",
+            True,
+            "🌐",
+        ),
+        (
+            "discord-cache",
+            "Discord cache",
+            "%APPDATA%\\discord\\Cache",
+            APPDATA / "discord" / "Cache",
+            True,
+            "💬",
+        ),
+        (
+            "slack-cache",
+            "Slack cache",
+            "%APPDATA%\\Slack\\Cache",
+            APPDATA / "Slack" / "Cache",
+            True,
+            "💬",
+        ),
+        (
+            "teams-cache",
+            "Teams cache",
+            "%APPDATA%\\Microsoft\\Teams\\Cache",
+            APPDATA / "Microsoft" / "Teams" / "Cache",
+            True,
+            "💬",
+        ),
+        (
+            "spotify-cache",
+            "Spotify cache",
+            "%LOCALAPPDATA%\\Spotify\\Storage",
+            LOCALAPPDATA / "Spotify" / "Storage",
+            True,
+            "🎵",
+        ),
+        (
+            "adobe-cache",
+            "Adobe media cache",
+            "%APPDATA%\\Adobe\\Common\\Media Cache",
+            APPDATA / "Adobe" / "Common" / "Media Cache",
+            True,
+            "🎬",
+        ),
+        (
+            "thumbnail-cache",
+            "Windows thumbnail cache",
+            "Explorer thumbcache db",
+            LOCALAPPDATA / "Microsoft" / "Windows" / "Explorer",
+            True,
+            "🖼",
+        ),
+        (
+            "directx-shader-cache",
+            "DirectX shader cache",
+            "%LOCALAPPDATA%\\D3DSCache",
+            LOCALAPPDATA / "D3DSCache",
+            True,
+            "🎮",
+        ),
+        (
+            "wer-reports",
+            "Windows Error Reports",
+            "%LOCALAPPDATA%\\Microsoft\\Windows\\WER",
+            LOCALAPPDATA / "Microsoft" / "Windows" / "WER",
+            True,
+            "🧾",
+        ),
+        (
+            "store-cache",
+            "Microsoft Store cache",
+            "%LOCALAPPDATA%\\Packages\\Microsoft.WindowsStore*",
+            LOCALAPPDATA / "Packages",
+            True,
+            "🏪",
+        ),
+        (
+            "wsl-logs",
+            "WSL logs",
+            "%LOCALAPPDATA%\\Packages\\*\\LocalState\\*.log",
+            LOCALAPPDATA / "Packages",
+            False,
+            "🐧",
+        ),
+        (
+            "delivery-optimization",
+            "Delivery Optimization cache",
+            "Windows delivery cache",
+            Path(
+                r"C:\Windows\ServiceProfiles\NetworkService\AppData\Local\Microsoft\Windows\DeliveryOptimization\Cache"
+            ),
+            False,
+            "🪟",
+        ),
     ]
     return FIXED_PATH_CATEGORIES + extra
 
@@ -1256,47 +1551,63 @@ def fixed_category_items(key: str, path: Path, selected: bool) -> List[Item]:
         return out
     return [Item(path=path, selected=selected)] if path_exists(path) else []
 
+
 DEV_CATEGORY_ICONS: Dict[str, str] = {
-    "node_modules":         "📚",
-    "Python venvs":         "🐍",
-    "Python __pycache__":   "🐍",
-    "pytest cache":         "🧪",
-    "mypy cache":           "🧪",
-    "ruff cache":           "🧪",
-    "tox envs":             "🧪",
-    "Rust/Java target":     "🛠",
-    "Build outputs":        "🛠",
-    "Dist outputs":         "📤",
-    "Next.js .next":        "▲",
-    "Nuxt .nuxt":           "💚",
-    "Turbo cache":          "⚡",
-    "Parcel cache":         "📦",
-    "Angular cache":        "🅰",
+    "node_modules": "📚",
+    "Python venvs": "🐍",
+    "Python __pycache__": "🐍",
+    "pytest cache": "🧪",
+    "mypy cache": "🧪",
+    "ruff cache": "🧪",
+    "tox envs": "🧪",
+    "Rust/Java target": "🛠",
+    "Build outputs": "🛠",
+    "Dist outputs": "📤",
+    "Next.js .next": "▲",
+    "Nuxt .nuxt": "💚",
+    "Turbo cache": "⚡",
+    "Parcel cache": "📦",
+    "Angular cache": "🅰",
     "Gradle project cache": "🐘",
-    "JetBrains .idea":      "💡",
-    "Visual Studio .vs":    "🟦",
-    ".NET obj/":            "🟦",
+    "JetBrains .idea": "💡",
+    "Visual Studio .vs": "🟦",
+    ".NET obj/": "🟦",
 }
 
-SKIP_DIRS = {"$RECYCLE.BIN", "System Volume Information", "Windows", "ProgramData",
-             "Program Files", "Program Files (x86)", "AppData",
-             # Never a cleanup target, and object stores make it a large share
-             # of the walk cost across a directory full of repositories.
-             ".git"}
+SKIP_DIRS = {
+    "$RECYCLE.BIN",
+    "System Volume Information",
+    "Windows",
+    "ProgramData",
+    "Program Files",
+    "Program Files (x86)",
+    "AppData",
+    # Never a cleanup target, and object stores make it a large share
+    # of the walk cost across a directory full of repositories.
+    ".git",
+}
 
 INSTALLER_EXTS = {".exe", ".msi", ".iso", ".zip", ".7z", ".dmg", ".pkg"}
 
 
 def discover_scan_roots() -> List[Path]:
     candidates = [
-        USER / "Projects", USER / "projects",
-        USER / "source", USER / "Source", USER / "src",
-        USER / "repos", USER / "Repos",
-        USER / "Documents", USER / "Desktop",
+        USER / "Projects",
+        USER / "projects",
+        USER / "source",
+        USER / "Source",
+        USER / "src",
+        USER / "repos",
+        USER / "Repos",
+        USER / "Documents",
+        USER / "Desktop",
         USER / "Downloads",
-        USER / "Code", USER / "code",
-        USER / "dev", USER / "Dev",
-        USER / "workspace", USER / "Workspace",
+        USER / "Code",
+        USER / "code",
+        USER / "dev",
+        USER / "Dev",
+        USER / "workspace",
+        USER / "Workspace",
         USER / "git",
     ]
     seen, roots = set(), []
@@ -1352,10 +1663,16 @@ def load_project_rc(root: Path) -> Optional[dict]:
     if not isinstance(data, dict):
         _debug_log(f"wmolerc: not an object {rc_file}")
         return None
-    purge = [str(v) for v in data.get("purge", []) if isinstance(v, (str, int))] \
-        if isinstance(data.get("purge"), list) else []
-    keep = [str(v) for v in data.get("keep", []) if isinstance(v, (str, int))] \
-        if isinstance(data.get("keep"), list) else []
+    purge = (
+        [str(v) for v in data.get("purge", []) if isinstance(v, (str, int))]
+        if isinstance(data.get("purge"), list)
+        else []
+    )
+    keep = (
+        [str(v) for v in data.get("keep", []) if isinstance(v, (str, int))]
+        if isinstance(data.get("keep"), list)
+        else []
+    )
     depth = data.get("max_depth")
     if not isinstance(depth, int) or isinstance(depth, bool) or depth <= 0:
         depth = 0
@@ -1398,7 +1715,7 @@ def rc_is_kept(rc: dict, path: Path) -> bool:
         if not pattern:
             continue
         for i in range(len(parts)):
-            if fnmatch.fnmatch("/".join(parts[:i + 1]), pattern):
+            if fnmatch.fnmatch("/".join(parts[: i + 1]), pattern):
                 return True
     return False
 
@@ -1499,28 +1816,32 @@ def find_large_files(path: Path, minimum_size: int, on_progress=None) -> List[di
     return large
 
 
-def analyze_path(path: Path, large_file_min: int = 1024 ** 3) -> dict:
+def analyze_path(path: Path, large_file_min: int = 1024**3) -> dict:
     path = path.expanduser()
     entries: List[dict] = []
     if path.is_dir():
         for child in path.iterdir():
             count, size = _file_count_and_size(child)
-            entries.append({
-                "name": child.name,
-                "path": str(child),
-                "size": size,
-                "is_dir": child.is_dir(),
-                "total_files": count,
-            })
+            entries.append(
+                {
+                    "name": child.name,
+                    "path": str(child),
+                    "size": size,
+                    "is_dir": child.is_dir(),
+                    "total_files": count,
+                }
+            )
     elif path.exists():
         count, size = _file_count_and_size(path)
-        entries.append({
-            "name": path.name,
-            "path": str(path),
-            "size": size,
-            "is_dir": False,
-            "total_files": count,
-        })
+        entries.append(
+            {
+                "name": path.name,
+                "path": str(path),
+                "size": size,
+                "is_dir": False,
+                "total_files": count,
+            }
+        )
     entries.sort(key=lambda row: row["size"], reverse=True)
     total_files, total_size = _file_count_and_size(path)
     return {
@@ -1541,8 +1862,17 @@ def quick_size(path: Path) -> int:
     return dir_size(path, max_seconds=0.2, max_files=2500)
 
 
-def build_fs_category(path: Path, live=None, scanner=None, view=None, cursor=0,
-                       use_trash=True, dry_run=False, apps=None, opt=None) -> Category:
+def build_fs_category(
+    path: Path,
+    live=None,
+    scanner=None,
+    view=None,
+    cursor=0,
+    use_trash=True,
+    dry_run=False,
+    apps=None,
+    opt=None,
+) -> Category:
     path = path.expanduser()
     title = str(path)
     cat = Category(
@@ -1572,12 +1902,23 @@ def build_fs_category(path: Path, live=None, scanner=None, view=None, cursor=0,
             if live is not None and total_children > 50 and idx % 10 == 0:
                 filled = int(20 * idx / total_children) if total_children > 0 else 20
                 progress_text = Text()
-                progress_text.append("[" + "█" * filled + "·" * (20 - filled) + "]", style="bright_cyan")
+                progress_text.append(
+                    "[" + "█" * filled + "·" * (20 - filled) + "]", style="bright_cyan"
+                )
                 progress_text.append(f"  Reading {idx + 1}/{total_children} items…", style="white")
-                live.update(Group(
-                    render(scanner, view, cursor, "", use_trash, dry_run, apps or [], opt or []),
-                    Panel(progress_text, title="Opening directory…", border_style="cyan", padding=(1, 2)),
-                ))
+                live.update(
+                    Group(
+                        render(
+                            scanner, view, cursor, "", use_trash, dry_run, apps or [], opt or []
+                        ),
+                        Panel(
+                            progress_text,
+                            title="Opening directory…",
+                            border_style="cyan",
+                            padding=(1, 2),
+                        ),
+                    )
+                )
         rows.sort(key=lambda it: (not it.path.is_dir(), -it.size, it.path.name.lower()))
         cat.items.extend(rows)
     cat.scanning = False
@@ -1636,8 +1977,9 @@ def _streaming_map(pool: ThreadPoolExecutor, fn, items, window: int, cancel=None
                 _debug_log(f"_streaming_map: {exc}")
 
 
-def iter_purge_candidates(roots: List[Path], scan_filter: "ScanFilter",
-                          workers: int = 4, cancel=None):
+def iter_purge_candidates(
+    roots: List[Path], scan_filter: "ScanFilter", workers: int = 4, cancel=None
+):
     """Yield (title, path) purge candidates as they are found.
 
     Roots are walked concurrently and results are streamed, so sizing can start
@@ -1676,11 +2018,16 @@ def iter_purge_candidates(roots: List[Path], scan_filter: "ScanFilter",
         pool.shutdown(wait=False)
 
 
-def build_purge_categories(roots: List[Path], whitelist: Optional[List[Path]] = None,
-                           cache: Optional[dict] = None,
-                           workers: Optional[int] = None,
-                           on_item=None, on_progress=None, cancel=None,
-                           dir_budget: Optional[float] = PURGE_DIR_BUDGET_SECONDS) -> List[Category]:
+def build_purge_categories(
+    roots: List[Path],
+    whitelist: Optional[List[Path]] = None,
+    cache: Optional[dict] = None,
+    workers: Optional[int] = None,
+    on_item=None,
+    on_progress=None,
+    cancel=None,
+    dir_budget: Optional[float] = PURGE_DIR_BUDGET_SECONDS,
+) -> List[Category]:
     """Discover and size project build artifacts under `roots`.
 
     Discovery and sizing are pipelined: each candidate is sized as soon as it is
@@ -1709,18 +2056,22 @@ def build_purge_categories(roots: List[Path], whitelist: Optional[List[Path]] = 
     # re-serialise discovery ahead of sizing. Keep a bounded window of in-flight
     # sizing jobs instead so both phases overlap.
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for title, item in _streaming_map(pool, size_one, candidates,
-                                          window=workers * 2, cancel=cancel):
+        for title, item in _streaming_map(
+            pool, size_one, candidates, window=workers * 2, cancel=cancel
+        ):
             if cancel is not None and cancel.is_set():
                 break
-            cat = by_title.setdefault(title, Category(
-                key=f"dev-{title}",
-                title=title,
-                description="project build artifacts",
-                icon=DEV_CATEGORY_ICONS.get(title, "📦"),
-                safe_default=True,
-                scanning=False,
-            ))
+            cat = by_title.setdefault(
+                title,
+                Category(
+                    key=f"dev-{title}",
+                    title=title,
+                    description="project build artifacts",
+                    icon=DEV_CATEGORY_ICONS.get(title, "📦"),
+                    safe_default=True,
+                    scanning=False,
+                ),
+            )
             cat.items.append(item)
             done += 1
             if on_item:
@@ -1758,15 +2109,17 @@ def build_installer_categories(roots: List[Path], days: int = 30) -> List[Catego
     items.sort(key=lambda item: item.size, reverse=True)
     if not items:
         return []
-    return [Category(
-        key="installers",
-        title="Installers",
-        description=f"installer files older than {days} day(s)",
-        icon="💿",
-        safe_default=True,
-        items=items,
-        scanning=False,
-    )]
+    return [
+        Category(
+            key="installers",
+            title="Installers",
+            description=f"installer files older than {days} day(s)",
+            icon="💿",
+            safe_default=True,
+            items=items,
+            scanning=False,
+        )
+    ]
 
 
 def build_clean_path_categories(roots: List[Path], days: int = 90) -> List[Category]:
@@ -1794,15 +2147,17 @@ def build_clean_path_categories(roots: List[Path], days: int = 90) -> List[Categ
     cats = build_installer_categories(roots, days=0)
     if old_items:
         old_items.sort(key=lambda item: item.size, reverse=True)
-        cats.append(Category(
-            key="old-files",
-            title=f"Old files ({days}d+)",
-            description="old files under explicit clean paths",
-            icon="📥",
-            safe_default=True,
-            items=old_items,
-            scanning=False,
-        ))
+        cats.append(
+            Category(
+                key="old-files",
+                title=f"Old files ({days}d+)",
+                description="old files under explicit clean paths",
+                icon="📥",
+                safe_default=True,
+                items=old_items,
+                scanning=False,
+            )
+        )
     cats.sort(key=lambda cat: cat.total, reverse=True)
     return cats
 
@@ -1840,7 +2195,10 @@ def discover_game_dirs() -> List[Item]:
         Path(r"C:\Riot Games"),
     ]
     for letter in "DEFGH":
-        for guess in (f"{letter}:\\SteamLibrary\\steamapps\\common", f"{letter}:\\Steam\\steamapps\\common"):
+        for guess in (
+            f"{letter}:\\SteamLibrary\\steamapps\\common",
+            f"{letter}:\\Steam\\steamapps\\common",
+        ):
             bases.append(Path(guess))
     for base in bases:
         if base.exists():
@@ -1901,10 +2259,16 @@ def old_installers(days: int = 30) -> List[Item]:
 
 # ---------- Scanner ----------
 class Scanner:
-    def __init__(self, whitelist: Optional[List[Path]] = None,
-                 profile: str = "full", roots: Optional[List[Path]] = None,
-                 use_cache: bool = True, on_item=None, on_progress=None,
-                 cancel=None) -> None:
+    def __init__(
+        self,
+        whitelist: Optional[List[Path]] = None,
+        profile: str = "full",
+        roots: Optional[List[Path]] = None,
+        use_cache: bool = True,
+        on_item=None,
+        on_progress=None,
+        cancel=None,
+    ) -> None:
         # on_item(category, item) / on_progress(done, label) let a caller stream
         # results while the scan runs; `cancel` is a threading.Event checked
         # between items so a long scan can actually be stopped.
@@ -1920,8 +2284,7 @@ class Scanner:
         self.profile = profile
         self.roots = roots
         self._lock = threading.Lock()
-        self.workers = int(os.environ.get("WMOLE_SCAN_WORKERS",
-                                          min(8, (os.cpu_count() or 4) * 2)))
+        self.workers = int(os.environ.get("WMOLE_SCAN_WORKERS", min(8, (os.cpu_count() or 4) * 2)))
         self.use_cache = use_cache
         self.cache = load_size_cache() if use_cache else {}
         self._cache_dirty = False
@@ -1952,8 +2315,10 @@ class Scanner:
         it.scanning = True
         with self._lock:
             self.current_item_id = id(it)
+
         def on_progress(n: int) -> None:
             it.partial = n
+
         if self.profile == "clean":
             it.size = dir_size(it.path, on_progress=on_progress, max_seconds=0.35, max_files=5000)
         else:
@@ -1978,17 +2343,21 @@ class Scanner:
             self.done = True
             return
         if self.profile == "purge":
+
             def note(n: int, label: str) -> None:
                 self.status = f"Sized {n} artifact folder(s) — {label}"
                 if self.on_progress:
                     self.on_progress(n, label)
-            for cat in build_purge_categories(self.roots or load_purge_roots() or discover_scan_roots(),
-                                              self.whitelist,
-                                              cache=self.cache if self.use_cache else None,
-                                              workers=self.workers,
-                                              on_item=self.on_item,
-                                              on_progress=note,
-                                              cancel=self.cancel):
+
+            for cat in build_purge_categories(
+                self.roots or load_purge_roots() or discover_scan_roots(),
+                self.whitelist,
+                cache=self.cache if self.use_cache else None,
+                workers=self.workers,
+                on_item=self.on_item,
+                on_progress=note,
+                cancel=self.cancel,
+            ):
                 self._add(cat)
             if self.use_cache:
                 save_size_cache(self.cache)
@@ -1996,7 +2365,9 @@ class Scanner:
             self.done = True
             return
         if self.profile in ("installer", "installers"):
-            for cat in build_installer_categories(self.roots or [USER / "Downloads", USER / "Desktop"]):
+            for cat in build_installer_categories(
+                self.roots or [USER / "Downloads", USER / "Desktop"]
+            ):
                 self._add(cat)
             self.status = "Installer scan complete."
             self.done = True
@@ -2004,38 +2375,57 @@ class Scanner:
 
         fixed_cats: List[Category] = []
         for key, title, desc, path, safe, icon in build_fixed_path_categories():
-            cat = Category(key=key, title=title, description=desc, icon=icon,
-                           safe_default=safe, expanded=False)
+            cat = Category(
+                key=key, title=title, description=desc, icon=icon, safe_default=safe, expanded=False
+            )
             cat.items.extend(fixed_category_items(key, path, selected=safe))
             self._add(cat)
             fixed_cats.append(cat)
 
-        rb = Category(key="recyclebin", title="Recycle Bin", description="all drives $Recycle.Bin",
-                      icon="🗑", safe_default=True, expanded=False)
+        rb = Category(
+            key="recyclebin",
+            title="Recycle Bin",
+            description="all drives $Recycle.Bin",
+            icon="🗑",
+            safe_default=True,
+            expanded=False,
+        )
         rb.items = recycle_bin_items()
         for it in rb.items:
             it.selected = True
         self._add(rb)
         fixed_cats.append(rb)
 
-        od = Category(key="old-downloads", title="Old Downloads (90d+)",
-                      description="files in ~\\Downloads older than 90 days",
-                      icon="📥", expanded=False)
+        od = Category(
+            key="old-downloads",
+            title="Old Downloads (90d+)",
+            description="files in ~\\Downloads older than 90 days",
+            icon="📥",
+            expanded=False,
+        )
         od.items = old_downloads(90)
         self._add(od)
         fixed_cats.append(od)
 
-        inst = Category(key="installers", title="Old installers (30d+)",
-                        description=".exe/.msi/.iso/.zip in Downloads & Desktop older than 30 days",
-                        icon="💿", expanded=False)
+        inst = Category(
+            key="installers",
+            title="Old installers (30d+)",
+            description=".exe/.msi/.iso/.zip in Downloads & Desktop older than 30 days",
+            icon="💿",
+            expanded=False,
+        )
         inst.items = old_installers(30)
         self._add(inst)
         fixed_cats.append(inst)
 
         if self.profile != "clean":
-            games = Category(key="games", title="Games & Launchers",
-                         description="Steam / Epic / GOG / Xbox installs",
-                         icon="🎮", expanded=True)
+            games = Category(
+                key="games",
+                title="Games & Launchers",
+                description="Steam / Epic / GOG / Xbox installs",
+                icon="🎮",
+                expanded=True,
+            )
             games.items = discover_game_dirs()
             self._add(games)
             fixed_cats.append(games)
@@ -2043,10 +2433,14 @@ class Scanner:
         dev_titles: Dict[str, Category] = {}
         if self.profile != "clean":
             for title in sorted({t for t in DEV_FOLDER_CATEGORIES.values() if t}):
-                cat = Category(key=f"dev-{title}", title=title,
-                           description="(searching dev dirs…)",
-                           icon=DEV_CATEGORY_ICONS.get(title, "📦"),
-                               safe_default=True, expanded=False)
+                cat = Category(
+                    key=f"dev-{title}",
+                    title=title,
+                    description="(searching dev dirs…)",
+                    icon=DEV_CATEGORY_ICONS.get(title, "📦"),
+                    safe_default=True,
+                    expanded=False,
+                )
                 dev_titles[title] = cat
                 self._add(cat)
 
@@ -2121,23 +2515,44 @@ def render_status() -> Group:
     net = psutil.net_io_counters()
     dio = psutil.disk_io_counters()
     boot = psutil.boot_time()
-    procs = sorted(psutil.process_iter(["name", "cpu_percent", "memory_info"]),
-                   key=lambda p: (p.info.get("cpu_percent") or 0), reverse=True)[:8]
+    procs = sorted(
+        psutil.process_iter(["name", "cpu_percent", "memory_info"]),
+        key=lambda p: p.info.get("cpu_percent") or 0,
+        reverse=True,
+    )[:8]
     score = health_score()
-    score_color = ("green3" if score >= 75 else
-                   "yellow" if score >= 50 else
-                   "dark_orange" if score >= 30 else "red")
+    score_color = (
+        "green3"
+        if score >= 75
+        else "yellow"
+        if score >= 50
+        else "dark_orange"
+        if score >= 30
+        else "red"
+    )
 
     now = time.time()
     if not hasattr(render_status, "_last"):
-        render_status._last = {"t": now, "disk_read": dio.read_bytes if dio else 0, "disk_write": dio.write_bytes if dio else 0, "net_sent": net.bytes_sent, "net_recv": net.bytes_recv}  # type: ignore[attr-defined]
+        render_status._last = {
+            "t": now,
+            "disk_read": dio.read_bytes if dio else 0,
+            "disk_write": dio.write_bytes if dio else 0,
+            "net_sent": net.bytes_sent,
+            "net_recv": net.bytes_recv,
+        }  # type: ignore[attr-defined]
     last = render_status._last  # type: ignore[attr-defined]
     dt = max(0.001, now - last["t"])
     disk_read_rate = ((dio.read_bytes if dio else 0) - last["disk_read"]) / dt
     disk_write_rate = ((dio.write_bytes if dio else 0) - last["disk_write"]) / dt
     net_up_rate = (net.bytes_sent - last["net_sent"]) / dt
     net_down_rate = (net.bytes_recv - last["net_recv"]) / dt
-    render_status._last = {"t": now, "disk_read": dio.read_bytes if dio else 0, "disk_write": dio.write_bytes if dio else 0, "net_sent": net.bytes_sent, "net_recv": net.bytes_recv}  # type: ignore[attr-defined]
+    render_status._last = {
+        "t": now,
+        "disk_read": dio.read_bytes if dio else 0,
+        "disk_write": dio.write_bytes if dio else 0,
+        "net_sent": net.bytes_sent,
+        "net_recv": net.bytes_recv,
+    }  # type: ignore[attr-defined]
 
     bat = psutil.sensors_battery() if hasattr(psutil, "sensors_battery") else None
     uptime_s = int(now - boot)
@@ -2152,7 +2567,7 @@ def render_status() -> Group:
 
     out = Text()
     out.append("System Status\n", style="bold magenta")
-    out.append(f"  Health  ", style="grey70")
+    out.append("  Health  ", style="grey70")
     out.append(f"{score}/100\n", style=f"bold {score_color}")
     out.append(f"  Device  {sysinfo.system} {sysinfo.release}  ({sysinfo.node})\n", style="grey70")
     out.append(f"  Uptime  {uptime}\n", style="grey70")
@@ -2162,11 +2577,26 @@ def render_status() -> Group:
     out.append(f"  CPU     {cpu:5.1f}%   ", style="grey70")
     out.append(" ".join(f"{c:4.0f}" for c in per_core[:8]), style="bright_cyan")
     out.append("\n")
-    out.append(f"  Memory  {mem.percent:5.1f}%  ({human_size(mem.used)} / {human_size(mem.total)})\n", style="grey70")
-    out.append(f"  Swap    {swap.percent:5.1f}%  ({human_size(swap.used)} / {human_size(swap.total)})\n", style="grey70")
-    out.append(f"  Disk    {disk.percent:5.1f}%  ({human_size(disk.used)} / {human_size(disk.total)}, {human_size(disk.free)} free)\n", style="grey70")
-    out.append(f"  Disk I/O ↑{human_size(int(disk_write_rate))}/s  ↓{human_size(int(disk_read_rate))}/s\n", style="grey70")
-    out.append(f"  Net     ↑{human_size(net.bytes_sent)} ({human_size(int(net_up_rate))}/s)   ↓{human_size(net.bytes_recv)} ({human_size(int(net_down_rate))}/s)\n", style="grey70")
+    out.append(
+        f"  Memory  {mem.percent:5.1f}%  ({human_size(mem.used)} / {human_size(mem.total)})\n",
+        style="grey70",
+    )
+    out.append(
+        f"  Swap    {swap.percent:5.1f}%  ({human_size(swap.used)} / {human_size(swap.total)})\n",
+        style="grey70",
+    )
+    out.append(
+        f"  Disk    {disk.percent:5.1f}%  ({human_size(disk.used)} / {human_size(disk.total)}, {human_size(disk.free)} free)\n",
+        style="grey70",
+    )
+    out.append(
+        f"  Disk I/O ↑{human_size(int(disk_write_rate))}/s  ↓{human_size(int(disk_read_rate))}/s\n",
+        style="grey70",
+    )
+    out.append(
+        f"  Net     ↑{human_size(net.bytes_sent)} ({human_size(int(net_up_rate))}/s)   ↓{human_size(net.bytes_recv)} ({human_size(int(net_down_rate))}/s)\n",
+        style="grey70",
+    )
     if temps:
         sensor_names = []
         for group in temps.values():
@@ -2180,7 +2610,7 @@ def render_status() -> Group:
         try:
             name = (p.info.get("name") or "?")[:24]
             cpup = p.info.get("cpu_percent") or 0
-            rss = (p.info.get("memory_info").rss if p.info.get("memory_info") else 0)
+            rss = p.info.get("memory_info").rss if p.info.get("memory_info") else 0
             out.append(f"   {name:<24} {cpup:5.1f}%   {human_size(rss):>10}\n", style="white")
         except Exception:
             pass
@@ -2203,7 +2633,13 @@ def read_cleanup_history(limit: int = 6) -> dict:
                 parts = line.split("\t")
                 if len(parts) < 5:
                     continue
-                ts, action, size_s, target, result = parts[0], parts[1], parts[2], parts[3], parts[4]
+                ts, action, size_s, target, result = (
+                    parts[0],
+                    parts[1],
+                    parts[2],
+                    parts[3],
+                    parts[4],
+                )
                 # Count only successful real deletions (skip dry-run/blocked).
                 if action not in ("delete-trash", "delete-permanent") or result != "ok":
                     continue
@@ -2230,8 +2666,7 @@ def _meter_bar(pct: float, width: int = 28, color: str = "bright_cyan") -> Text:
     return t
 
 
-def render_dashboard(scanner: Optional["Scanner"] = None,
-                     max_rows: Optional[int] = None) -> Group:
+def render_dashboard(scanner: Optional["Scanner"] = None, max_rows: Optional[int] = None) -> Group:
     """Landing dashboard: disk/PC fullness, system health, cleanup history,
     and reclaimable-space estimate from the live clean scan.
 
@@ -2241,7 +2676,9 @@ def render_dashboard(scanner: Optional["Scanner"] = None,
     Live screen crops the input box off the bottom)."""
     tr = LANG == "tr"
     out = Text()
-    out.append(("📊 Gösterge Paneli\n\n" if tr else "📊 Dashboard\n\n"), style="bold bright_magenta")
+    out.append(
+        ("📊 Gösterge Paneli\n\n" if tr else "📊 Dashboard\n\n"), style="bold bright_magenta"
+    )
 
     # ── Disk fullness ──
     if psutil is not None:
@@ -2250,18 +2687,34 @@ def render_dashboard(scanner: Optional["Scanner"] = None,
             mem = psutil.virtual_memory()
             cpu = psutil.cpu_percent(interval=None)
             score = health_score()
-            score_color = ("green3" if score >= 75 else "yellow" if score >= 50
-                           else "dark_orange" if score >= 30 else "red")
-            disk_color = ("red" if disk.percent >= 90 else "dark_orange" if disk.percent >= 75
-                          else "bright_cyan")
-            mem_color = ("red" if mem.percent >= 90 else "dark_orange" if mem.percent >= 75
-                         else "green3")
+            score_color = (
+                "green3"
+                if score >= 75
+                else "yellow"
+                if score >= 50
+                else "dark_orange"
+                if score >= 30
+                else "red"
+            )
+            disk_color = (
+                "red"
+                if disk.percent >= 90
+                else "dark_orange"
+                if disk.percent >= 75
+                else "bright_cyan"
+            )
+            mem_color = (
+                "red" if mem.percent >= 90 else "dark_orange" if mem.percent >= 75 else "green3"
+            )
 
             out.append("  Disk    ", style="grey70")
             out.append(_meter_bar(disk.percent, color=disk_color))
             out.append(f"  {disk.percent:5.1f}%", style=f"bold {disk_color}")
             out.append(f"   {human_size(disk.used)} / {human_size(disk.total)}  ", style="grey62")
-            out.append((f"({human_size(disk.free)} boş)\n" if tr else f"({human_size(disk.free)} free)\n"), style="green")
+            out.append(
+                (f"({human_size(disk.free)} boş)\n" if tr else f"({human_size(disk.free)} free)\n"),
+                style="green",
+            )
 
             out.append("  RAM     ", style="grey70")
             out.append(_meter_bar(mem.percent, color=mem_color))
@@ -2276,9 +2729,23 @@ def render_dashboard(scanner: Optional["Scanner"] = None,
             out.append(_meter_bar(score, color=score_color))
             out.append(f"  {score}/100\n", style=f"bold {score_color}")
         except Exception:
-            out.append(("  (sistem metrikleri okunamadı)\n" if tr else "  (could not read system metrics)\n"), style="red")
+            out.append(
+                (
+                    "  (sistem metrikleri okunamadı)\n"
+                    if tr
+                    else "  (could not read system metrics)\n"
+                ),
+                style="red",
+            )
     else:
-        out.append(("  psutil yüklü değil — `pip install psutil`\n" if tr else "  psutil not installed — `pip install psutil`\n"), style="red")
+        out.append(
+            (
+                "  psutil yüklü değil — `pip install psutil`\n"
+                if tr
+                else "  psutil not installed — `pip install psutil`\n"
+            ),
+            style="red",
+        )
 
     # ── Reclaimable space from the live clean scan ──
     out.append(("\n  Temizlik Analizi\n" if tr else "\n  Cleanup Analysis\n"), style="bold grey85")
@@ -2291,24 +2758,44 @@ def render_dashboard(scanner: Optional["Scanner"] = None,
         for c in cats:
             for it in c.items:
                 if it.selected and not it.deleted and not is_protected_path(it.path):
-                    reclaimable += (it.partial or it.size)
+                    reclaimable += it.partial or it.size
                     items += 1
     except TypeError:
         cats = []
     if scanner is not None:
         if not scan_done:
             out.append(("   ⟳ taranıyor…  " if tr else "   ⟳ scanning…  "), style="bright_yellow")
-            out.append((f"şimdiye dek {human_size(reclaimable)} geri kazanılabilir\n" if tr
-                        else f"{human_size(reclaimable)} reclaimable so far\n"), style="grey70")
+            out.append(
+                (
+                    f"şimdiye dek {human_size(reclaimable)} geri kazanılabilir\n"
+                    if tr
+                    else f"{human_size(reclaimable)} reclaimable so far\n"
+                ),
+                style="grey70",
+            )
         elif reclaimable > 0:
-            out.append(("   ♻ Geri kazanılabilir: " if tr else "   ♻ Reclaimable: "), style="grey70")
+            out.append(
+                ("   ♻ Geri kazanılabilir: " if tr else "   ♻ Reclaimable: "), style="grey70"
+            )
             out.append(f"{human_size(reclaimable)}", style="bold bright_green")
             out.append((f"  ({items} öğe)\n" if tr else f"  ({items} items)\n"), style="grey62")
-            out.append(("   [C] Hızlı temizliği başlat\n" if tr else "   [C] Start quick clean\n"), style="bright_cyan")
+            out.append(
+                ("   [C] Hızlı temizliği başlat\n" if tr else "   [C] Start quick clean\n"),
+                style="bright_cyan",
+            )
         else:
-            out.append(("   ✓ Temizlenecek fazla veri yok\n" if tr else "   ✓ Nothing significant to clean\n"), style="green")
+            out.append(
+                (
+                    "   ✓ Temizlenecek fazla veri yok\n"
+                    if tr
+                    else "   ✓ Nothing significant to clean\n"
+                ),
+                style="green",
+            )
     else:
-        out.append(("   (analiz bekleniyor)\n" if tr else "   (analysis pending)\n"), style="grey50")
+        out.append(
+            ("   (analiz bekleniyor)\n" if tr else "   (analysis pending)\n"), style="grey50"
+        )
 
     # ── Cleanup history ──
     # Everything above already consumed a fixed number of rows; budget the
@@ -2321,25 +2808,44 @@ def render_dashboard(scanner: Optional["Scanner"] = None,
         budget = max_rows - rows_so_far - 2 - 3
         hist_limit = max(0, min(5, budget))
     hist = read_cleanup_history(limit=hist_limit)
-    out.append(("\n  Yapılan Temizlikler\n" if tr else "\n  Cleanup History\n"), style="bold grey85")
+    out.append(
+        ("\n  Yapılan Temizlikler\n" if tr else "\n  Cleanup History\n"), style="bold grey85"
+    )
     if hist["count"] > 0:
         out.append(("   Toplam boşaltılan: " if tr else "   Total freed: "), style="grey70")
         out.append(f"{human_size(hist['total_freed'])}", style="bold bright_green")
-        out.append((f"   ({hist['count']} işlem)\n" if tr else f"   ({hist['count']} operations)\n"), style="grey62")
+        out.append(
+            (f"   ({hist['count']} işlem)\n" if tr else f"   ({hist['count']} operations)\n"),
+            style="grey62",
+        )
         if hist["last_ts"] and hist_limit > 0:
-            out.append((f"   Son işlem: {hist['last_ts']}\n" if tr else f"   Last run: {hist['last_ts']}\n"), style="grey62")
+            out.append(
+                (
+                    f"   Son işlem: {hist['last_ts']}\n"
+                    if tr
+                    else f"   Last run: {hist['last_ts']}\n"
+                ),
+                style="grey62",
+            )
         for e in hist["recent"]:
             name = os.path.basename(e["path"].rstrip("\\/")) or e["path"]
             out.append(f"     {human_size(e['size']):>9}  ", style="cyan")
             out.append(f"{name[:40]}\n", style="grey70")
     else:
-        out.append(("   Henüz temizlik kaydı yok\n" if tr else "   No cleanup records yet\n"), style="grey50")
+        out.append(
+            ("   Henüz temizlik kaydı yok\n" if tr else "   No cleanup records yet\n"),
+            style="grey50",
+        )
 
     out.append("\n  ", style="grey50")
-    out.append("[C]", style="bright_cyan"); out.append((" hızlı temizlik   " if tr else " quick clean   "), style="grey70")
-    out.append("[/]", style="bright_cyan"); out.append((" komutlar   " if tr else " commands   "), style="grey70")
-    out.append("[S]", style="bright_cyan"); out.append((" canlı durum   " if tr else " live status   "), style="grey70")
-    out.append("[Q]", style="bright_cyan"); out.append((" çıkış" if tr else " quit"), style="grey70")
+    out.append("[C]", style="bright_cyan")
+    out.append((" hızlı temizlik   " if tr else " quick clean   "), style="grey70")
+    out.append("[/]", style="bright_cyan")
+    out.append((" komutlar   " if tr else " commands   "), style="grey70")
+    out.append("[S]", style="bright_cyan")
+    out.append((" canlı durum   " if tr else " live status   "), style="grey70")
+    out.append("[Q]", style="bright_cyan")
+    out.append((" çıkış" if tr else " quit"), style="grey70")
     return Group(out)
 
 
@@ -2355,22 +2861,74 @@ class OptAction:
 
 
 OPTIMIZE_ACTIONS: List[OptAction] = [
-    OptAction("Flush DNS cache",          "ipconfig /flushdns",                                ["ipconfig", "/flushdns"], key="flush-dns"),
-    OptAction("Reset Winsock",            "netsh winsock reset (admin)",                       ["netsh", "winsock", "reset"], requires_admin=True, risk="high", key="winsock"),
-    OptAction("Reset IP stack",           "netsh int ip reset (admin)",                        ["netsh", "int", "ip", "reset"], requires_admin=True, risk="high", key="ip-reset"),
-    OptAction("Clear ARP cache",          "netsh interface ip delete arpcache",                ["netsh", "interface", "ip", "delete", "arpcache"], requires_admin=True, key="arp"),
-    OptAction("Clear Prefetch",           "delete C:\\Windows\\Prefetch\\*",                   ["cmd", "/c", "del", "/q", "/f", r"C:\Windows\Prefetch\*"], requires_admin=True, risk="high", key="prefetch"),
-    OptAction("Clear Event Logs",         "wevtutil cl (Application+System)",                  ["cmd", "/c", "wevtutil el | findstr /v Microsoft-Windows-LiveId & wevtutil cl Application & wevtutil cl System"], requires_admin=True, risk="high", key="event-logs"),
-    OptAction("Reset Windows Update",     "stop wuauserv, delete SoftwareDistribution",        ["cmd", "/c", "echo reset windows update"], requires_admin=True, risk="high", key="windows-update"),
-    OptAction("Clear Store cache",        "WSReset",                                            ["WSReset.exe"], key="store-cache"),
-    OptAction("Storage Sense (open)",     "open Storage settings",                             ["cmd", "/c", "start ms-settings:storagesense"], key="storage-sense"),
-    OptAction("Disk Cleanup",             "open cleanmgr",                                     ["cleanmgr"], key="cleanmgr"),
+    OptAction("Flush DNS cache", "ipconfig /flushdns", ["ipconfig", "/flushdns"], key="flush-dns"),
+    OptAction(
+        "Reset Winsock",
+        "netsh winsock reset (admin)",
+        ["netsh", "winsock", "reset"],
+        requires_admin=True,
+        risk="high",
+        key="winsock",
+    ),
+    OptAction(
+        "Reset IP stack",
+        "netsh int ip reset (admin)",
+        ["netsh", "int", "ip", "reset"],
+        requires_admin=True,
+        risk="high",
+        key="ip-reset",
+    ),
+    OptAction(
+        "Clear ARP cache",
+        "netsh interface ip delete arpcache",
+        ["netsh", "interface", "ip", "delete", "arpcache"],
+        requires_admin=True,
+        key="arp",
+    ),
+    OptAction(
+        "Clear Prefetch",
+        "delete C:\\Windows\\Prefetch\\*",
+        ["cmd", "/c", "del", "/q", "/f", r"C:\Windows\Prefetch\*"],
+        requires_admin=True,
+        risk="high",
+        key="prefetch",
+    ),
+    OptAction(
+        "Clear Event Logs",
+        "wevtutil cl (Application+System)",
+        [
+            "cmd",
+            "/c",
+            "wevtutil el | findstr /v Microsoft-Windows-LiveId & wevtutil cl Application & wevtutil cl System",
+        ],
+        requires_admin=True,
+        risk="high",
+        key="event-logs",
+    ),
+    OptAction(
+        "Reset Windows Update",
+        "stop wuauserv, delete SoftwareDistribution",
+        ["cmd", "/c", "echo reset windows update"],
+        requires_admin=True,
+        risk="high",
+        key="windows-update",
+    ),
+    OptAction("Clear Store cache", "WSReset", ["WSReset.exe"], key="store-cache"),
+    OptAction(
+        "Storage Sense (open)",
+        "open Storage settings",
+        ["cmd", "/c", "start ms-settings:storagesense"],
+        key="storage-sense",
+    ),
+    OptAction("Disk Cleanup", "open cleanmgr", ["cleanmgr"], key="cleanmgr"),
 ]
 
 
 def _is_service_running(name: str) -> bool:
     try:
-        r = subprocess.run(["sc", "query", name], capture_output=True, text=True, timeout=10, shell=False)
+        r = subprocess.run(
+            ["sc", "query", name], capture_output=True, text=True, timeout=10, shell=False
+        )
         return "RUNNING" in (r.stdout or "")
     except (subprocess.SubprocessError, OSError):
         return False
@@ -2382,13 +2940,26 @@ def _run_windows_update_reset(dry_run: bool) -> str:
     was_running = _is_service_running("wuauserv")
     try:
         if was_running:
-            subprocess.run(["net", "stop", "wuauserv"], capture_output=True, text=True, timeout=60, shell=False)
+            subprocess.run(
+                ["net", "stop", "wuauserv"], capture_output=True, text=True, timeout=60, shell=False
+            )
         # SystemRoot yerine sabit C:\Windows kullanmak farklı sistem sürücülerinde kırılıyor.
         soft_dist = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "SoftwareDistribution"
-        subprocess.run(["cmd", "/c", "rmdir", "/s", "/q", str(soft_dist)],
-                       capture_output=True, text=True, timeout=120, shell=False)
+        subprocess.run(
+            ["cmd", "/c", "rmdir", "/s", "/q", str(soft_dist)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            shell=False,
+        )
         if was_running:
-            subprocess.run(["net", "start", "wuauserv"], capture_output=True, text=True, timeout=60, shell=False)
+            subprocess.run(
+                ["net", "start", "wuauserv"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                shell=False,
+            )
         return "ok: Reset Windows Update"
     except subprocess.TimeoutExpired:
         return "timeout"
@@ -2433,9 +3004,14 @@ def list_installed_apps() -> List[dict]:
     if os.name != "nt":
         return apps
     import winreg
+
     roots = [
         ("HKLM", winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
-        ("HKLM", winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (
+            "HKLM",
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        ),
         ("HKCU", winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
     ]
     for hive_name, hive, sub in roots:
@@ -2450,22 +3026,28 @@ def list_installed_apps() -> List[dict]:
                         break
                     try:
                         with winreg.OpenKey(h, name) as sk:
+
                             def g(k):
-                                try: return winreg.QueryValueEx(sk, k)[0]
-                                except OSError: return ""
+                                try:
+                                    return winreg.QueryValueEx(sk, k)[0]
+                                except OSError:
+                                    return ""
+
                             dn = g("DisplayName")
                             if not dn:
                                 continue
-                            apps.append({
-                                "name": dn,
-                                "version": g("DisplayVersion"),
-                                "publisher": g("Publisher"),
-                                "install_location": g("InstallLocation"),
-                                "display_icon": g("DisplayIcon"),
-                                "estimated_size_kb": g("EstimatedSize"),
-                                "uninstall": g("UninstallString") or g("QuietUninstallString"),
-                                "uninstall_key": f"{hive_name}\\{sub}\\{name}",
-                            })
+                            apps.append(
+                                {
+                                    "name": dn,
+                                    "version": g("DisplayVersion"),
+                                    "publisher": g("Publisher"),
+                                    "install_location": g("InstallLocation"),
+                                    "display_icon": g("DisplayIcon"),
+                                    "estimated_size_kb": g("EstimatedSize"),
+                                    "uninstall": g("UninstallString") or g("QuietUninstallString"),
+                                    "uninstall_key": f"{hive_name}\\{sub}\\{name}",
+                                }
+                            )
                     except OSError:
                         pass
         except OSError:
@@ -2475,7 +3057,8 @@ def list_installed_apps() -> List[dict]:
     for a in apps:
         k = (a["name"], a["version"])
         if k not in seen:
-            seen.add(k); out.append(a)
+            seen.add(k)
+            out.append(a)
     out.sort(key=lambda a: a["name"].lower())
     return out
 
@@ -2558,7 +3141,9 @@ def build_footer_lines(width: int) -> List[str]:
             "G Büyük",
             "V Sürücüler",
             "\\ TR/EN",
-        ] if LANG == "tr" else [
+        ]
+        if LANG == "tr"
+        else [
             "Up/Down",
             "Enter",
             "Space Pick",
@@ -2585,167 +3170,221 @@ def build_footer_lines(width: int) -> List[str]:
 @dataclass
 class View:
     title: str
-    kind: str   # 'cats' | 'items' | 'status' | 'optimize' | 'uninstall' | 'help'
+    kind: str  # 'cats' | 'items' | 'status' | 'optimize' | 'uninstall' | 'help'
     category: Optional[Category] = None
     scroll: int = 0  # used by 'help'
 
 
 def _help_sections_tr() -> List[tuple]:
     return [
-        ("wmole nedir?", [
-            "Windows için derin temizlik, optimize, kaldırma ve geliştirici",
-            "artıkları temizleme aracı. Tüm silmeler varsayılan olarak Geri",
-            "Dönüşüm Kutusu'na gider; KALICI mod açıkça onay ister.",
-        ]),
-        ("Komut girdisi ile işlemler", [
-            "/analyze          Dosya sistemini gez, klasör boyutlarını gör",
-            "/categories       Kategorilere göre toplu disk haritası",
-            "/clean            Güvenli temizlik kategorilerini incele",
-            "/purge            node_modules, build, venv vb. dev klasörleri",
-            "/installers       İndirilenlerdeki eski .exe/.msi setupları",
-            "/uninstall        Kurulu programlar + artık temizliği",
-            "/optimize         DNS flush, Windows Update reset, Storage Sense",
-            "/status           Canlı CPU/RAM/Disk/Ağ/Sıcaklık dashboard",
-            "/ports            Dinleyen geliştirici portlarının özetini göster",
-            "/update           Güncel sürüm durumunu göster",
-            "/help             Bu yardım ekranını aç",
-            "/large /drives    Büyük dosyalar / sürücü seçici",
-            "/select /delete   Seçimi değiştir / seçilenleri onayla sil",
-            "/permanent        Kalıcı silme modunu aç/kapa",
-            "/open /refresh    Explorer'da aç / taramayı yenile",
-            "/leftovers        Seçili uygulamanın artıklarını tara",
-            "/lang /back /quit Dil değiştir / geri dön / çık",
-        ]),
-        ("Liste navigasyonu", [
-            "↑/↓             imleci taşı",
-            "Enter           kategori/klasör aç, eylem çalıştır",
-            "Space           seç / seçimi kaldır (kategoride: tümü)",
-            "D               seçilenleri sil (onay diyaloğu açılır)",
-            "K               KALICI mod aç/kapa (kırmızı = geri alınamaz)",
-            "O               geçerli yolu Explorer'da aç",
-            "R               taramayı yenile",
-            "Q / Esc         bir seviye geri / TUI'den çık",
-        ]),
-        ("Dosya sistemi modunda ekstra", [
-            "G               eşik üstü büyük dosyaları listele (config: large_file_min_mb)",
-            "V               sürücü seçici (C:, D:, …)",
-        ]),
-        ("Kaldırma modunda ekstra", [
-            "L               seçili uygulamanın artık dosya/registry adaylarını tara",
-        ]),
-        ("Güvenlik", [
-            "• Varsayılan: send2trash → Geri Dönüşüm Kutusu'na taşır.",
-            "• K tuşu ile KALICI mod açılır; başlık kırmızıya döner.",
-            "• ~/.wmole/whitelist.txt içinde listelenen yollara dokunulmaz.",
-            "• ~/.wmole/denylist.txt asla taranmaz (purge bile).",
-            "• Korumalı yollar (C:\\Windows, Program Files…) otomatik atlanır.",
-            "• Tüm silme/kaldırma/güncelleme ~/.wmole/logs/operations.log'a yazılır.",
-        ]),
-        ("CLI komutları (terminal)", [
-            "wmole                       TUI'yi başlatır (Analyze görünümü)",
-            "wmole clean [--dry-run]     güvenli kategorileri tek onayla siler",
-            "wmole purge [paths…]        node_modules/build/dist topluca sil",
-            "wmole installers            Downloads/Desktop'taki eski setupları bul",
-            "wmole uninstall --query x   kurulu programları filtrele",
-            "wmole optimize              DNS flush, WU reset, Storage Sense vs.",
-            "wmole status [--json]       sistem dashboard / makine-okur çıktı",
-            "wmole ports                 dinleyen geliştirici portlarını listele",
-            "wmole ports --kill 5173     porta veya PID'e göre süreci öldür",
-            "wmole ports --kill all      tüm localhost dinleyicilerini kapat",
-            "wmole update                yeniyse GitHub'dan installer ile yükselt",
-            "wmole update --disable-auto arka plan otomatik güncellemeyi kapat",
-        ]),
-        ("Otomatik güncelleme", [
-            "Her başlatmada GitHub Releases sessizce kontrol edilir (6 saatte 1).",
-            "Yeni sürüm varsa installer %TEMP%'e indirilir ve wmole çıkışında",
-            "/VERYSILENT modda kurulur. Bir dahaki açılışta yeni sürümdesiniz.",
-            "Devre dışı: wmole update --disable-auto  veya  WMOLE_NO_AUTO_UPDATE=1",
-        ]),
-        ("İpuçları", [
-            "• T tuşu (henüz globalde değil, plan) → --dry-run önizleme",
-            "• \\ tuşu Türkçe ↔ English geçişi (config'e yazılır)",
-            "• Tarama büyük disklerde 1-2 dk sürebilir, animasyon aktiftir.",
-            "• Sorun bildirme: https://github.com/umutc6230/wmole/issues",
-        ]),
+        (
+            "wmole nedir?",
+            [
+                "Windows için derin temizlik, optimize, kaldırma ve geliştirici",
+                "artıkları temizleme aracı. Tüm silmeler varsayılan olarak Geri",
+                "Dönüşüm Kutusu'na gider; KALICI mod açıkça onay ister.",
+            ],
+        ),
+        (
+            "Komut girdisi ile işlemler",
+            [
+                "/analyze          Dosya sistemini gez, klasör boyutlarını gör",
+                "/categories       Kategorilere göre toplu disk haritası",
+                "/clean            Güvenli temizlik kategorilerini incele",
+                "/purge            node_modules, build, venv vb. dev klasörleri",
+                "/installers       İndirilenlerdeki eski .exe/.msi setupları",
+                "/uninstall        Kurulu programlar + artık temizliği",
+                "/optimize         DNS flush, Windows Update reset, Storage Sense",
+                "/status           Canlı CPU/RAM/Disk/Ağ/Sıcaklık dashboard",
+                "/ports            Dinleyen geliştirici portlarının özetini göster",
+                "/update           Güncel sürüm durumunu göster",
+                "/help             Bu yardım ekranını aç",
+                "/large /drives    Büyük dosyalar / sürücü seçici",
+                "/select /delete   Seçimi değiştir / seçilenleri onayla sil",
+                "/permanent        Kalıcı silme modunu aç/kapa",
+                "/open /refresh    Explorer'da aç / taramayı yenile",
+                "/leftovers        Seçili uygulamanın artıklarını tara",
+                "/lang /back /quit Dil değiştir / geri dön / çık",
+            ],
+        ),
+        (
+            "Liste navigasyonu",
+            [
+                "↑/↓             imleci taşı",
+                "Enter           kategori/klasör aç, eylem çalıştır",
+                "Space           seç / seçimi kaldır (kategoride: tümü)",
+                "D               seçilenleri sil (onay diyaloğu açılır)",
+                "K               KALICI mod aç/kapa (kırmızı = geri alınamaz)",
+                "O               geçerli yolu Explorer'da aç",
+                "R               taramayı yenile",
+                "Q / Esc         bir seviye geri / TUI'den çık",
+            ],
+        ),
+        (
+            "Dosya sistemi modunda ekstra",
+            [
+                "G               eşik üstü büyük dosyaları listele (config: large_file_min_mb)",
+                "V               sürücü seçici (C:, D:, …)",
+            ],
+        ),
+        (
+            "Kaldırma modunda ekstra",
+            [
+                "L               seçili uygulamanın artık dosya/registry adaylarını tara",
+            ],
+        ),
+        (
+            "Güvenlik",
+            [
+                "• Varsayılan: send2trash → Geri Dönüşüm Kutusu'na taşır.",
+                "• K tuşu ile KALICI mod açılır; başlık kırmızıya döner.",
+                "• ~/.wmole/whitelist.txt içinde listelenen yollara dokunulmaz.",
+                "• ~/.wmole/denylist.txt asla taranmaz (purge bile).",
+                "• Korumalı yollar (C:\\Windows, Program Files…) otomatik atlanır.",
+                "• Tüm silme/kaldırma/güncelleme ~/.wmole/logs/operations.log'a yazılır.",
+            ],
+        ),
+        (
+            "CLI komutları (terminal)",
+            [
+                "wmole                       TUI'yi başlatır (Analyze görünümü)",
+                "wmole clean [--dry-run]     güvenli kategorileri tek onayla siler",
+                "wmole purge [paths…]        node_modules/build/dist topluca sil",
+                "wmole installers            Downloads/Desktop'taki eski setupları bul",
+                "wmole uninstall --query x   kurulu programları filtrele",
+                "wmole optimize              DNS flush, WU reset, Storage Sense vs.",
+                "wmole status [--json]       sistem dashboard / makine-okur çıktı",
+                "wmole ports                 dinleyen geliştirici portlarını listele",
+                "wmole ports --kill 5173     porta veya PID'e göre süreci öldür",
+                "wmole ports --kill all      tüm localhost dinleyicilerini kapat",
+                "wmole update                yeniyse GitHub'dan installer ile yükselt",
+                "wmole update --disable-auto arka plan otomatik güncellemeyi kapat",
+            ],
+        ),
+        (
+            "Otomatik güncelleme",
+            [
+                "Her başlatmada GitHub Releases sessizce kontrol edilir (6 saatte 1).",
+                "Yeni sürüm varsa installer %TEMP%'e indirilir ve wmole çıkışında",
+                "/VERYSILENT modda kurulur. Bir dahaki açılışta yeni sürümdesiniz.",
+                "Devre dışı: wmole update --disable-auto  veya  WMOLE_NO_AUTO_UPDATE=1",
+            ],
+        ),
+        (
+            "İpuçları",
+            [
+                "• T tuşu (henüz globalde değil, plan) → --dry-run önizleme",
+                "• \\ tuşu Türkçe ↔ English geçişi (config'e yazılır)",
+                "• Tarama büyük disklerde 1-2 dk sürebilir, animasyon aktiftir.",
+                "• Sorun bildirme: https://github.com/umutc6230/wmole/issues",
+            ],
+        ),
     ]
 
 
 def _help_sections_en() -> List[tuple]:
     return [
-        ("What is wmole?", [
-            "A Windows toolkit for deep cleaning, optimization, uninstall, and",
-            "developer-leftover sweeps. All deletes go to the Recycle Bin by",
-            "default; PERMANENT mode requires explicit opt-in.",
-        ]),
-        ("Operations via command input", [
-            "/analyze          Browse the filesystem with live folder sizes",
-            "/categories       Category breakdown of disk usage",
-            "/clean            Review safe cleanup categories",
-            "/purge            node_modules, build, venv & friends",
-            "/installers       Old .exe/.msi setups in Downloads",
-            "/uninstall        Installed programs + leftover sweep",
-            "/optimize         DNS flush, Windows Update reset, Storage Sense",
-            "/status           Live CPU/RAM/Disk/Net/Temperature dashboard",
-            "/ports            Show listening developer ports",
-            "/update           Show current update status",
-            "/help             Open this help screen",
-            "/large /drives    Large files / drive picker",
-            "/select /delete   Toggle selection / confirm selected delete",
-            "/permanent        Toggle permanent-delete mode",
-            "/open /refresh    Open in Explorer / refresh current scan",
-            "/leftovers        Scan leftovers for selected program",
-            "/lang /back /quit Switch language / return / exit",
-        ]),
-        ("List navigation", [
-            "↑/↓             move cursor",
-            "Enter           open category/folder, run action",
-            "Space           toggle selection (on a category: select all)",
-            "D               delete selected (confirm dialog opens)",
-            "K               toggle PERMANENT mode (red = non-recoverable)",
-            "O               open current path in Explorer",
-            "R               refresh scan",
-            "Q / Esc         back one level / exit TUI",
-        ]),
-        ("FS mode extras", [
-            "G               list files larger than threshold (config: large_file_min_mb)",
-            "V               drive picker (C:, D:, …)",
-        ]),
-        ("Uninstall extras", [
-            "L               scan leftover file + registry candidates for the selected app",
-        ]),
-        ("Safety", [
-            "• Default: send2trash → moves into Recycle Bin.",
-            "• K toggles PERMANENT mode; header turns red.",
-            "• Paths in ~/.wmole/whitelist.txt are never touched.",
-            "• ~/.wmole/denylist.txt is never even scanned (even by purge).",
-            "• Protected paths (C:\\Windows, Program Files…) auto-skipped.",
-            "• All delete/uninstall/update actions log to ~/.wmole/logs/operations.log.",
-        ]),
-        ("CLI commands (terminal)", [
-            "wmole                       launch TUI (Analyze view)",
-            "wmole clean [--dry-run]     one-confirm wipe of safe categories",
-            "wmole purge [paths…]        bulk-delete node_modules/build/dist",
-            "wmole installers            find old setups in Downloads/Desktop",
-            "wmole uninstall --query x   filter installed programs",
-            "wmole optimize              DNS flush, WU reset, Storage Sense, …",
-            "wmole status [--json]       system dashboard / machine-readable",
-            "wmole ports                 list listening developer ports",
-            "wmole ports --kill 5173     kill by port or PID",
-            "wmole ports --kill all      close every localhost listener",
-            "wmole update                check GitHub, upgrade in place if newer",
-            "wmole update --disable-auto turn off background auto-update",
-        ]),
-        ("Auto-update", [
-            "Every launch silently checks GitHub Releases (throttled to 6h).",
-            "If newer, installer is pre-downloaded to %TEMP% and installed",
-            "with /VERYSILENT when wmole exits. Next run = new version.",
-            "Opt out: wmole update --disable-auto  or  WMOLE_NO_AUTO_UPDATE=1",
-        ]),
-        ("Tips", [
-            "• \\ toggles Turkish ↔ English (persisted in config).",
-            "• Scans can take 1-2 min on large disks; animation indicates progress.",
-            "• Report issues: https://github.com/umutc6230/wmole/issues",
-        ]),
+        (
+            "What is wmole?",
+            [
+                "A Windows toolkit for deep cleaning, optimization, uninstall, and",
+                "developer-leftover sweeps. All deletes go to the Recycle Bin by",
+                "default; PERMANENT mode requires explicit opt-in.",
+            ],
+        ),
+        (
+            "Operations via command input",
+            [
+                "/analyze          Browse the filesystem with live folder sizes",
+                "/categories       Category breakdown of disk usage",
+                "/clean            Review safe cleanup categories",
+                "/purge            node_modules, build, venv & friends",
+                "/installers       Old .exe/.msi setups in Downloads",
+                "/uninstall        Installed programs + leftover sweep",
+                "/optimize         DNS flush, Windows Update reset, Storage Sense",
+                "/status           Live CPU/RAM/Disk/Net/Temperature dashboard",
+                "/ports            Show listening developer ports",
+                "/update           Show current update status",
+                "/help             Open this help screen",
+                "/large /drives    Large files / drive picker",
+                "/select /delete   Toggle selection / confirm selected delete",
+                "/permanent        Toggle permanent-delete mode",
+                "/open /refresh    Open in Explorer / refresh current scan",
+                "/leftovers        Scan leftovers for selected program",
+                "/lang /back /quit Switch language / return / exit",
+            ],
+        ),
+        (
+            "List navigation",
+            [
+                "↑/↓             move cursor",
+                "Enter           open category/folder, run action",
+                "Space           toggle selection (on a category: select all)",
+                "D               delete selected (confirm dialog opens)",
+                "K               toggle PERMANENT mode (red = non-recoverable)",
+                "O               open current path in Explorer",
+                "R               refresh scan",
+                "Q / Esc         back one level / exit TUI",
+            ],
+        ),
+        (
+            "FS mode extras",
+            [
+                "G               list files larger than threshold (config: large_file_min_mb)",
+                "V               drive picker (C:, D:, …)",
+            ],
+        ),
+        (
+            "Uninstall extras",
+            [
+                "L               scan leftover file + registry candidates for the selected app",
+            ],
+        ),
+        (
+            "Safety",
+            [
+                "• Default: send2trash → moves into Recycle Bin.",
+                "• K toggles PERMANENT mode; header turns red.",
+                "• Paths in ~/.wmole/whitelist.txt are never touched.",
+                "• ~/.wmole/denylist.txt is never even scanned (even by purge).",
+                "• Protected paths (C:\\Windows, Program Files…) auto-skipped.",
+                "• All delete/uninstall/update actions log to ~/.wmole/logs/operations.log.",
+            ],
+        ),
+        (
+            "CLI commands (terminal)",
+            [
+                "wmole                       launch TUI (Analyze view)",
+                "wmole clean [--dry-run]     one-confirm wipe of safe categories",
+                "wmole purge [paths…]        bulk-delete node_modules/build/dist",
+                "wmole installers            find old setups in Downloads/Desktop",
+                "wmole uninstall --query x   filter installed programs",
+                "wmole optimize              DNS flush, WU reset, Storage Sense, …",
+                "wmole status [--json]       system dashboard / machine-readable",
+                "wmole ports                 list listening developer ports",
+                "wmole ports --kill 5173     kill by port or PID",
+                "wmole ports --kill all      close every localhost listener",
+                "wmole update                check GitHub, upgrade in place if newer",
+                "wmole update --disable-auto turn off background auto-update",
+            ],
+        ),
+        (
+            "Auto-update",
+            [
+                "Every launch silently checks GitHub Releases (throttled to 6h).",
+                "If newer, installer is pre-downloaded to %TEMP% and installed",
+                "with /VERYSILENT when wmole exits. Next run = new version.",
+                "Opt out: wmole update --disable-auto  or  WMOLE_NO_AUTO_UPDATE=1",
+            ],
+        ),
+        (
+            "Tips",
+            [
+                "• \\ toggles Turkish ↔ English (persisted in config).",
+                "• Scans can take 1-2 min on large disks; animation indicates progress.",
+                "• Report issues: https://github.com/umutc6230/wmole/issues",
+            ],
+        ),
     ]
 
 
@@ -2753,34 +3392,152 @@ def _help_sections_en() -> List[tuple]:
 def palette_commands() -> List[dict]:
     """The catalog shown when the user presses `/` in the TUI."""
     tr = LANG == "tr"
-    def d(en, tr_): return tr_ if tr else en
+
+    def d(en, tr_):
+        return tr_ if tr else en
+
     return [
-        {"name": "dashboard", "desc": d("System overview, cleanup analysis & history", "Sistem özeti, temizlik analizi ve geçmiş"), "action": "view:dashboard"},
-        {"name": "analyze",   "desc": d("Browse the filesystem with live sizes", "Dosya sistemini canlı boyutlarla gez"),     "action": "view:analyze-fs"},
-        {"name": "categories","desc": d("Disk usage by category",                "Kategoriye göre disk dağılımı"),             "action": "view:cats"},
-        {"name": "clean",     "desc": d("Review safe cleanup categories",        "Güvenli temizlik kategorilerini incele"),    "action": "view:clean"},
-        {"name": "purge",     "desc": d("Bulk-delete node_modules/build/dist",   "node_modules/build/dist toplu sil"),         "action": "view:purge"},
-        {"name": "installers","desc": d("Find old setups in Downloads/Desktop",  "İndirilenlerdeki eski setupları bul"),       "action": "view:installers"},
-        {"name": "uninstall", "desc": d("Installed programs + leftover sweep",   "Kurulu programlar + artık temizliği"),       "action": "view:uninstall"},
-        {"name": "optimize",  "desc": d("DNS flush, Windows Update reset, …",    "DNS flush, Windows Update reset, …"),        "action": "view:optimize"},
-        {"name": "status",    "desc": d("Live CPU/RAM/Disk/Net dashboard",       "Canlı CPU/RAM/Disk/Ağ dashboard"),           "action": "view:status"},
-        {"name": "ports",     "desc": d("List listening dev ports (run CLI to kill)", "Dinleyen dev portları (öldürme CLI'da)"), "action": "exec:ports"},
-        {"name": "update",    "desc": d("Check GitHub update status",            "GitHub güncelleme durumunu kontrol et"),     "action": "exec:update"},
-        {"name": "help",      "desc": d("Open the help & features screen",      "Yardım & özellikler ekranını aç"),           "action": "view:help"},
-        {"name": "doctor",    "desc": d("Dev machine health report (CLI)",       "Geliştirici makine sağlık raporu (CLI)"),    "action": "exec:doctor"},
-        {"name": "undo",      "desc": d("List/restore quarantined deletions (CLI)", "Karantinadaki silmeleri geri al (CLI)"),  "action": "exec:undo"},
-        {"name": "hook",      "desc": d("Install the secret-scan pre-commit hook (CLI)", "Secret tarayan pre-commit hook kur (CLI)"), "action": "exec:hook"},
-        {"name": "large",     "desc": d("List large files in this folder",       "Bu klasördeki büyük dosyaları listele"),     "action": "key:g"},
-        {"name": "drives",    "desc": d("Open the drive picker",                 "Sürücü seçiciyi aç"),                        "action": "key:v"},
-        {"name": "select",    "desc": d("Toggle current item selection",         "Geçerli öğe seçimini değiştir"),             "action": "key:SPACE"},
-        {"name": "delete",    "desc": d("Delete selected items with confirmation", "Seçilenleri onayla sil"),                   "action": "key:d"},
-        {"name": "permanent", "desc": d("Toggle permanent-delete mode",          "Kalıcı silme modunu değiştir"),              "action": "key:k"},
-        {"name": "open",      "desc": d("Open current item in Explorer",         "Geçerli öğeyi Explorer'da aç"),              "action": "key:o"},
-        {"name": "refresh",   "desc": d("Refresh the current scan",              "Geçerli taramayı yenile"),                   "action": "key:r"},
-        {"name": "leftovers", "desc": d("Scan leftovers for selected program",   "Seçili programın artıklarını tara"),         "action": "key:l"},
-        {"name": "lang",      "desc": d("Switch Turkish / English",              "Türkçe / İngilizce değiştir"),               "action": "key:\\"},
-        {"name": "back",      "desc": d("Return to the previous surface",        "Önceki ekrana dön"),                         "action": "key:ESC"},
-        {"name": "quit",      "desc": d("Exit wmole",                            "wmole'dan çık"),                             "action": "exec:quit"},
+        {
+            "name": "dashboard",
+            "desc": d(
+                "System overview, cleanup analysis & history",
+                "Sistem özeti, temizlik analizi ve geçmiş",
+            ),
+            "action": "view:dashboard",
+        },
+        {
+            "name": "analyze",
+            "desc": d(
+                "Browse the filesystem with live sizes", "Dosya sistemini canlı boyutlarla gez"
+            ),
+            "action": "view:analyze-fs",
+        },
+        {
+            "name": "categories",
+            "desc": d("Disk usage by category", "Kategoriye göre disk dağılımı"),
+            "action": "view:cats",
+        },
+        {
+            "name": "clean",
+            "desc": d("Review safe cleanup categories", "Güvenli temizlik kategorilerini incele"),
+            "action": "view:clean",
+        },
+        {
+            "name": "purge",
+            "desc": d("Bulk-delete node_modules/build/dist", "node_modules/build/dist toplu sil"),
+            "action": "view:purge",
+        },
+        {
+            "name": "installers",
+            "desc": d(
+                "Find old setups in Downloads/Desktop", "İndirilenlerdeki eski setupları bul"
+            ),
+            "action": "view:installers",
+        },
+        {
+            "name": "uninstall",
+            "desc": d("Installed programs + leftover sweep", "Kurulu programlar + artık temizliği"),
+            "action": "view:uninstall",
+        },
+        {
+            "name": "optimize",
+            "desc": d("DNS flush, Windows Update reset, …", "DNS flush, Windows Update reset, …"),
+            "action": "view:optimize",
+        },
+        {
+            "name": "status",
+            "desc": d("Live CPU/RAM/Disk/Net dashboard", "Canlı CPU/RAM/Disk/Ağ dashboard"),
+            "action": "view:status",
+        },
+        {
+            "name": "ports",
+            "desc": d(
+                "List listening dev ports (run CLI to kill)",
+                "Dinleyen dev portları (öldürme CLI'da)",
+            ),
+            "action": "exec:ports",
+        },
+        {
+            "name": "update",
+            "desc": d("Check GitHub update status", "GitHub güncelleme durumunu kontrol et"),
+            "action": "exec:update",
+        },
+        {
+            "name": "help",
+            "desc": d("Open the help & features screen", "Yardım & özellikler ekranını aç"),
+            "action": "view:help",
+        },
+        {
+            "name": "doctor",
+            "desc": d("Dev machine health report (CLI)", "Geliştirici makine sağlık raporu (CLI)"),
+            "action": "exec:doctor",
+        },
+        {
+            "name": "undo",
+            "desc": d(
+                "List/restore quarantined deletions (CLI)", "Karantinadaki silmeleri geri al (CLI)"
+            ),
+            "action": "exec:undo",
+        },
+        {
+            "name": "hook",
+            "desc": d(
+                "Install the secret-scan pre-commit hook (CLI)",
+                "Secret tarayan pre-commit hook kur (CLI)",
+            ),
+            "action": "exec:hook",
+        },
+        {
+            "name": "large",
+            "desc": d("List large files in this folder", "Bu klasördeki büyük dosyaları listele"),
+            "action": "key:g",
+        },
+        {
+            "name": "drives",
+            "desc": d("Open the drive picker", "Sürücü seçiciyi aç"),
+            "action": "key:v",
+        },
+        {
+            "name": "select",
+            "desc": d("Toggle current item selection", "Geçerli öğe seçimini değiştir"),
+            "action": "key:SPACE",
+        },
+        {
+            "name": "delete",
+            "desc": d("Delete selected items with confirmation", "Seçilenleri onayla sil"),
+            "action": "key:d",
+        },
+        {
+            "name": "permanent",
+            "desc": d("Toggle permanent-delete mode", "Kalıcı silme modunu değiştir"),
+            "action": "key:k",
+        },
+        {
+            "name": "open",
+            "desc": d("Open current item in Explorer", "Geçerli öğeyi Explorer'da aç"),
+            "action": "key:o",
+        },
+        {
+            "name": "refresh",
+            "desc": d("Refresh the current scan", "Geçerli taramayı yenile"),
+            "action": "key:r",
+        },
+        {
+            "name": "leftovers",
+            "desc": d("Scan leftovers for selected program", "Seçili programın artıklarını tara"),
+            "action": "key:l",
+        },
+        {
+            "name": "lang",
+            "desc": d("Switch Turkish / English", "Türkçe / İngilizce değiştir"),
+            "action": "key:\\",
+        },
+        {
+            "name": "back",
+            "desc": d("Return to the previous surface", "Önceki ekrana dön"),
+            "action": "key:ESC",
+        },
+        {"name": "quit", "desc": d("Exit wmole", "wmole'dan çık"), "action": "exec:quit"},
     ]
 
 
@@ -2798,7 +3555,7 @@ def render_palette(query: str, cursor: int, max_rows: int = 12) -> Panel:
         body = Text("  (no matching command)\n", style="grey50")
     else:
         page_start = max(0, min(cursor - (max_rows - 1), len(rows) - max_rows))
-        visible_rows = rows[page_start:page_start + max_rows]
+        visible_rows = rows[page_start : page_start + max_rows]
         body = Text()
         for offset, c in enumerate(visible_rows):
             i = page_start + offset
@@ -2815,11 +3572,15 @@ def render_palette(query: str, cursor: int, max_rows: int = 12) -> Panel:
     header.append(query, style="bold white")
     header.append("█", style="bright_magenta")
     header.append("\n", style="white")
-    hint = Text("\n  [↑/↓] choose   [Enter] run   [Esc] cancel   [Backspace] edit\n",
-                style="grey50")
-    return Panel(Group(header, body, hint),
-                 title=("Commands" if LANG != "tr" else "Komutlar"),
-                 border_style="bright_magenta", padding=(0, 1))
+    hint = Text(
+        "\n  [↑/↓] choose   [Enter] run   [Esc] cancel   [Backspace] edit\n", style="grey50"
+    )
+    return Panel(
+        Group(header, body, hint),
+        title=("Commands" if LANG != "tr" else "Komutlar"),
+        border_style="bright_magenta",
+        padding=(0, 1),
+    )
 
 
 def render_command_input() -> Panel:
@@ -2880,17 +3641,24 @@ def T_update(key: str, **kw) -> str:
             "download_success_prompt": "New version (v{latest}) successfully downloaded!\n\nDo you want to apply it and restart wmole now?\n\n[Enter] Yes (Install & Restart)  ·  [Esc] No (Apply on exit)",
             "postpone": "Update staged, will be installed automatically when you close wmole.",
             "applying": "Applying update, closing wmole...",
-        }
+        },
     }
     s = strings.get(LANG, strings["tr"]).get(key) or strings["en"].get(key, key)
     return s.format(**kw) if kw else s
 
 
-def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int,
-                            apps_cache: List[dict], opt_cache: List[dict],
-                            use_trash: bool, dry_run: bool) -> str:
+def interactive_tui_update(
+    live: Live,
+    scanner: Scanner,
+    view: View,
+    cursor: int,
+    apps_cache: List[dict],
+    opt_cache: List[dict],
+    use_trash: bool,
+    dry_run: bool,
+) -> str:
     border_color = "red" if not use_trash else "magenta"
-    
+
     # 1. Developer / Source code Mode (sys.frozen is False)
     if not getattr(sys, "frozen", False):
         body_txt = Text("\n" + T_update("git_updating") + "\n", style="bold cyan")
@@ -2899,35 +3667,53 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             title="wmole update",
             title_align="center",
             border_style=border_color,
-            padding=(1, 2)
+            padding=(1, 2),
         )
         live.update(modal)
-        
+
         # Perform git pull and dependency upgrade
-        steps = []
         if path_exists(Path(".git")):
-            r = subprocess.run(["git", "pull", "--ff-only"], capture_output=True, text=True, shell=False)
-            git_ok = (r.returncode == 0)
+            r = subprocess.run(
+                ["git", "pull", "--ff-only"], capture_output=True, text=True, shell=False
+            )
+            git_ok = r.returncode == 0
             git_out = (r.stdout or r.stderr).strip()
         else:
             git_ok = False
             git_out = "not a git repository"
-            
+
         if git_ok:
             # Upgrade dependencies
-            r2 = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "rich", "send2trash", "psutil"],
-                                capture_output=True, text=True, shell=False)
-            body_txt = Text("\n" + T_update("git_success", output=git_out) + "\n", style="bold green")
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade",
+                    "rich",
+                    "send2trash",
+                    "psutil",
+                ],
+                capture_output=True,
+                text=True,
+                shell=False,
+            )
+            body_txt = Text(
+                "\n" + T_update("git_success", output=git_out) + "\n", style="bold green"
+            )
         else:
             body_txt = Text("\n" + T_update("git_fail", output=git_out) + "\n", style="bold red")
-            
-        body_txt.append("\n\n" + T("confirm_keys").split("·")[-1].strip(), style="bold cyan") # Esc to close
+
+        body_txt.append(
+            "\n\n" + T("confirm_keys").split("·")[-1].strip(), style="bold cyan"
+        )  # Esc to close
         modal = Panel(
             Align.center(body_txt, vertical="middle"),
             title="wmole update",
             title_align="center",
             border_style=border_color,
-            padding=(1, 2)
+            padding=(1, 2),
         )
         live.update(modal)
         while True:
@@ -2944,10 +3730,10 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
         title="wmole update",
         title_align="center",
         border_style=border_color,
-        padding=(1, 2)
+        padding=(1, 2),
     )
     live.update(modal)
-    
+
     rel = fetch_latest_release()
     if not rel:
         body_txt = Text("\n" + T_update("fail_reach") + "\n", style="bold red")
@@ -2957,7 +3743,7 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             title="wmole update",
             title_align="center",
             border_style=border_color,
-            padding=(1, 2)
+            padding=(1, 2),
         )
         live.update(modal)
         while True:
@@ -2965,11 +3751,11 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             if k in ("ESC", "ENTER"):
                 break
         return T_update("fail_reach")
-        
+
     latest_tag = rel.get("tag_name", "")
     latest_ver = _parse_semver(latest_tag)
     current_ver = _parse_semver(__version__)
-    
+
     if latest_ver <= current_ver:
         body_txt = Text("\n" + T_update("up_to_date", ver=__version__) + "\n", style="bold green")
         body_txt.append("\n\n" + T("confirm_keys").split("·")[-1].strip(), style="bold cyan")
@@ -2978,7 +3764,7 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             title="wmole update",
             title_align="center",
             border_style=border_color,
-            padding=(1, 2)
+            padding=(1, 2),
         )
         live.update(modal)
         while True:
@@ -2986,7 +3772,7 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             if k in ("ESC", "ENTER"):
                 break
         return T_update("up_to_date", ver=__version__)
-        
+
     asset = _pick_installer_asset(rel.get("assets", []))
     if not asset:
         body_txt = Text("\n" + T_update("no_asset") + "\n", style="bold red")
@@ -2996,7 +3782,7 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             title="wmole update",
             title_align="center",
             border_style=border_color,
-            padding=(1, 2)
+            padding=(1, 2),
         )
         live.update(modal)
         while True:
@@ -3004,41 +3790,50 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             if k in ("ESC", "ENTER"):
                 break
         return T_update("no_asset")
-        
+
     url = asset["browser_download_url"]
     name = Path(asset["name"]).name  # strip any path components from the API value
     expected_size = int(asset.get("size") or 0)
     dest = TEMP / name
-    
+
     # Check if we already have this exact installer staged.
     already_staged = False
     if PENDING_UPDATE_FILE.exists():
         try:
             cur = json.loads(PENDING_UPDATE_FILE.read_text(encoding="utf-8"))
             cur_path = Path(cur.get("path", ""))
-            if (cur.get("version") == latest_tag and cur_path.exists()
-                    and (expected_size == 0 or cur_path.stat().st_size == expected_size)):
+            if (
+                cur.get("version") == latest_tag
+                and cur_path.exists()
+                and (expected_size == 0 or cur_path.stat().st_size == expected_size)
+            ):
                 already_staged = True
         except Exception:
             pass
-            
+
     if already_staged:
-        body_txt = Text("\n" + T_update("ready_prompt", latest=latest_tag) + "\n", style="bold green")
+        body_txt = Text(
+            "\n" + T_update("ready_prompt", latest=latest_tag) + "\n", style="bold green"
+        )
         modal = Panel(
             Align.center(body_txt, vertical="middle"),
             title=T_update("ready_title"),
             title_align="center",
             border_style=border_color,
-            padding=(1, 2)
+            padding=(1, 2),
         )
         live.update(modal)
-        
+
         while True:
             k = read_key()
             if k == "ENTER":
                 # Apply immediately
                 body_txt = Text("\n" + T_update("applying") + "\n", style="bold green")
-                modal = Panel(Align.center(body_txt, vertical="middle"), title="wmole update", border_style=border_color)
+                modal = Panel(
+                    Align.center(body_txt, vertical="middle"),
+                    title="wmole update",
+                    border_style=border_color,
+                )
                 live.update(modal)
                 time.sleep(0.8)
                 # Smart launch: uses setup flags for installers, batch-swap for raw EXEs
@@ -3046,7 +3841,7 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
                 # _launch_updated calls os._exit(0), so we never reach here
             elif k == "ESC":
                 return f"update available: {latest_tag}"
-                
+
     # If not staged, prompt to download
     body_txt = Text("\n" + T_update("found_prompt", latest=latest_tag) + "\n", style="bold yellow")
     modal = Panel(
@@ -3054,34 +3849,37 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
         title=T_update("found_title"),
         title_align="center",
         border_style=border_color,
-        padding=(1, 2)
+        padding=(1, 2),
     )
     live.update(modal)
-    
+
     k = read_key()
     if k != "ENTER":
         return T("cancelled")
-        
+
     # Start download with live progress bar
     try:
+
         def _prog(read, total):
             pct = int(read * 100 / total)
             # Create a simple ASCII/Unicode progress bar
             bar_len = 30
             filled = int(bar_len * read / total)
             bar_str = "█" * filled + "░" * (bar_len - filled)
-            
-            body_txt = Text("\n" + T_update("downloading", name=name, pct=pct) + "\n\n", style="bold cyan")
+
+            body_txt = Text(
+                "\n" + T_update("downloading", name=name, pct=pct) + "\n\n", style="bold cyan"
+            )
             body_txt.append(f"  {bar_str}  {pct:3d}%\n", style="bright_blue")
             modal = Panel(
                 Align.center(body_txt, vertical="middle"),
                 title="wmole update",
                 title_align="center",
                 border_style=border_color,
-                padding=(1, 2)
+                padding=(1, 2),
             )
             live.update(modal)
-            
+
         _download(url, dest, on_progress=_prog)
 
         # Verify download integrity against expected size
@@ -3093,21 +3891,26 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             raise IOError("size mismatch")
 
         # Successfully downloaded, write pending file
-        PENDING_UPDATE_FILE.write_text(json.dumps({
-            "version": latest_tag,
-            "name": name,
-            "path": str(dest),
-            "downloaded_at": time.time(),
-            "from_version": __version__,
-        }), encoding="utf-8")
-        
+        PENDING_UPDATE_FILE.write_text(
+            json.dumps(
+                {
+                    "version": latest_tag,
+                    "name": name,
+                    "path": str(dest),
+                    "downloaded_at": time.time(),
+                    "from_version": __version__,
+                }
+            ),
+            encoding="utf-8",
+        )
+
         # Save check file so background doesn't hit GitHub again soon
         try:
             WMOLE_DIR.mkdir(parents=True, exist_ok=True)
             UPDATE_CHECK_FILE.write_text(json.dumps({"ts": time.time()}), encoding="utf-8")
         except Exception:
             pass
-            
+
     except Exception as exc:
         body_txt = Text("\n" + T_update("download_fail", err=str(exc)) + "\n", style="bold red")
         body_txt.append("\n\n" + T("confirm_keys").split("·")[-1].strip(), style="bold cyan")
@@ -3116,7 +3919,7 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             title="wmole update",
             title_align="center",
             border_style=border_color,
-            padding=(1, 2)
+            padding=(1, 2),
         )
         live.update(modal)
         while True:
@@ -3124,23 +3927,29 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             if k in ("ESC", "ENTER"):
                 break
         return T_update("download_fail", err=str(exc))
-        
+
     # Download successful! Prompt for restart
-    body_txt = Text("\n" + T_update("download_success_prompt", latest=latest_tag) + "\n", style="bold green")
+    body_txt = Text(
+        "\n" + T_update("download_success_prompt", latest=latest_tag) + "\n", style="bold green"
+    )
     modal = Panel(
         Align.center(body_txt, vertical="middle"),
         title=T_update("download_success_title"),
         title_align="center",
         border_style=border_color,
-        padding=(1, 2)
+        padding=(1, 2),
     )
     live.update(modal)
-    
+
     k = read_key()
     if k == "ENTER":
         # Apply immediately
         body_txt = Text("\n" + T_update("applying") + "\n", style="bold green")
-        modal = Panel(Align.center(body_txt, vertical="middle"), title="wmole update", border_style=border_color)
+        modal = Panel(
+            Align.center(body_txt, vertical="middle"),
+            title="wmole update",
+            border_style=border_color,
+        )
         live.update(modal)
         time.sleep(0.8)
         # Smart launch: uses setup flags for installers, batch-swap for raw EXEs
@@ -3155,7 +3964,7 @@ def interactive_tui_update(live: Live, scanner: Scanner, view: View, cursor: int
             title="wmole update",
             title_align="center",
             border_style=border_color,
-            padding=(1, 2)
+            padding=(1, 2),
         )
         live.update(modal)
         while True:
@@ -3202,22 +4011,31 @@ def view_rows(view: View, scanner: Scanner) -> List[object]:
     return []
 
 
-def render(scanner: Scanner, view: View, cursor: int, msg: str,
-           use_trash: bool, dry_run: bool, apps_cache: List[dict],
-           opt_cache: List[dict],
-           palette: Optional[tuple] = None) -> Group:
+def render(
+    scanner: Scanner,
+    view: View,
+    cursor: int,
+    msg: str,
+    use_trash: bool,
+    dry_run: bool,
+    apps_cache: List[dict],
+    opt_cache: List[dict],
+    palette: Optional[tuple] = None,
+) -> Group:
     total_free = free_space_gb()
     footer_lines = build_footer_lines(console.size.width or 120)
 
     # Top banner — title reflects the current view
     title = {
         "dashboard": "wmole · Gösterge Paneli" if LANG == "tr" else "wmole · Dashboard",
-        "cats":      T("title_analyze"),
-        "items":     T("title_inside", name=view.category.title) if view.category else T("title_analyze"),
-        "status":    T("title_status"),
-        "optimize":  T("title_optimize"),
+        "cats": T("title_analyze"),
+        "items": T("title_inside", name=view.category.title)
+        if view.category
+        else T("title_analyze"),
+        "status": T("title_status"),
+        "optimize": T("title_optimize"),
         "uninstall": T("title_uninstall"),
-        "help":      T("title_help"),
+        "help": T("title_help"),
     }.get(view.kind, "wmole")
     permanent_mode = not use_trash
     header = Text()
@@ -3225,20 +4043,29 @@ def render(scanner: Scanner, view: View, cursor: int, msg: str,
     header.append(f"  v{__version__}", style="grey50")
     header.append("  " + T("free_suffix", free=total_free), style="grey62")
     mode_tags = [T("mode_permanent") if permanent_mode else T("mode_trash")]
-    if dry_run: mode_tags.append(T("mode_dry_run"))
+    if dry_run:
+        mode_tags.append(T("mode_dry_run"))
     tag_style = "bold red on grey15" if permanent_mode else ("bold yellow" if dry_run else "grey70")
     header.append("   " + "  ".join(mode_tags), style=tag_style)
     header.append("\n")
     if view.kind == "dashboard":
-        header.append(("Sistem durumu, temizlik analizi ve geçmiş — [C] hızlı temizlik · [/] komutlar" if LANG == "tr"
-                       else "System status, cleanup analysis & history — [C] quick clean · [/] commands"), style="grey70")
+        header.append(
+            (
+                "Sistem durumu, temizlik analizi ve geçmiş — [C] hızlı temizlik · [/] komutlar"
+                if LANG == "tr"
+                else "System status, cleanup analysis & history — [C] quick clean · [/] commands"
+            ),
+            style="grey70",
+        )
     elif view.kind == "cats":
         header.append(T("hint_cats"), style="grey70")
     elif view.kind == "items":
         if view.category and view.category.key.startswith("fs:"):
             header.append(T("hint_fs"), style="grey70")
         else:
-            header.append(T("hint_items", name=view.category.title if view.category else ""), style="grey70")
+            header.append(
+                T("hint_items", name=view.category.title if view.category else ""), style="grey70"
+            )
     elif view.kind == "status":
         header.append(T("hint_status"), style="grey70")
     elif view.kind == "optimize":
@@ -3249,31 +4076,39 @@ def render(scanner: Scanner, view: View, cursor: int, msg: str,
         header.append(T("hint_help"), style="grey70")
 
     # Body
-    palette_limit = (palette_visible_rows(console.size.height or 30) if palette is not None else 12)
+    palette_limit = palette_visible_rows(console.size.height or 30) if palette is not None else 12
     if view.kind == "dashboard":
         # Reserve rows for header (2), footer, the status line, and the 3-row
         # command-input panel so the dashboard body never crops the input box.
         term_h = console.size.height or 30
         body_budget = max(8, term_h - (2 + len(footer_lines) + 1 + 3))
         body = render_dashboard(scanner, body_budget)
-        rows_for_pad = 0
         rows = []
     elif view.kind == "help":
         body = render_help(view.scroll)
-        rows_for_pad = 0
         rows = []
     elif view.kind == "status":
         # Status mode: fixed-height dashboard
         body = render_status()
-        rows_for_pad = 0
         rows = []  # for footer-only path below
     else:
-        rows = (view_rows(view, scanner) if view.kind in ("cats", "items")
-                else opt_cache if view.kind == "optimize"
-                else apps_cache)
+        rows = (
+            view_rows(view, scanner)
+            if view.kind in ("cats", "items")
+            else opt_cache
+            if view.kind == "optimize"
+            else apps_cache
+        )
 
-        def cat_size(c): return sum((i.partial or i.size) for i in c.items if not i.deleted) if c.scanning else c.total
-        def item_size(it): return it.partial if it.scanning and it.partial else it.size
+        def cat_size(c):
+            return (
+                sum((i.partial or i.size) for i in c.items if not i.deleted)
+                if c.scanning
+                else c.total
+            )
+
+        def item_size(it):
+            return it.partial if it.scanning and it.partial else it.size
 
         if view.kind == "cats":
             sizes = [cat_size(r) for r in rows]
@@ -3284,7 +4119,9 @@ def render(scanner: Scanner, view: View, cursor: int, msg: str,
         total = sum(sizes) or 1
         max_pct = max((s / total * 100 for s in sizes), default=1)
 
-        palette_limit = palette_visible_rows(console.size.height or 30) if palette is not None else 12
+        palette_limit = (
+            palette_visible_rows(console.size.height or 30) if palette is not None else 12
+        )
         palette_rows = palette_extra_height(palette[0], palette_limit) if palette is not None else 0
         reserved = 12 + len(footer_lines) + palette_rows
         min_body_rows = 1 if palette is not None else 5
@@ -3297,58 +4134,83 @@ def render(scanner: Scanner, view: View, cursor: int, msg: str,
         rows_shown = end - start
 
         body = Text("\n")
-        body.append(("      " + T("footer_more", n=start) + "\n" if start > 0 else "\n"), style="grey42")
+        body.append(
+            ("      " + T("footer_more", n=start) + "\n" if start > 0 else "\n"), style="grey42"
+        )
 
         for i, row in enumerate(rows):
             if i < start or i >= end:
                 continue
             is_cursor = i == cursor
             prefix = Text("  ▶ " if is_cursor else "    ", style="cyan")
-            idx_txt = Text(f"{i+1:>2}. ", style="grey62")
+            idx_txt = Text(f"{i + 1:>2}. ", style="grey62")
 
             if view.kind == "cats":
                 cat: Category = row  # type: ignore[assignment]
                 size = cat_size(cat)
                 pct = size / total * 100
-                is_active = (scanner.current_cat_key == cat.key)
+                is_active = scanner.current_cat_key == cat.key
                 is_pending = cat.scanning and not is_active and size == 0
                 animating = cat.scanning and size == 0
-                bar = animated_bar(color="bright_cyan" if is_active else "grey50", phase=i * 3.0) if animating else render_bar(pct, i, max_pct, has_size=size > 0)
+                bar = (
+                    animated_bar(color="bright_cyan" if is_active else "grey50", phase=i * 3.0)
+                    if animating
+                    else render_bar(pct, i, max_pct, has_size=size > 0)
+                )
                 all_sel = bool(cat.items) and all(it.selected or it.deleted for it in cat.items)
                 any_sel = any(it.selected for it in cat.items if not it.deleted)
                 mark = "✓" if all_sel else ("~" if any_sel else " ")
-                mark_style = "bright_green" if all_sel else ("yellow" if any_sel else "grey42")
                 spin = (spinner_char() + " ") if cat.scanning else ("  " if is_pending else "")
-                name_style = ("bright_cyan" if is_cursor else "bright_yellow" if cat.scanning
-                              else "grey42" if is_pending else "white")
+                name_style = (
+                    "bright_cyan"
+                    if is_cursor
+                    else "bright_yellow"
+                    if cat.scanning
+                    else "grey42"
+                    if is_pending
+                    else "white"
+                )
                 name = Text(f"[{mark}] {spin}{cat.icon} {cat.title}", style=name_style)
                 pct_txt = Text(f"  {pct:5.1f}%", style="bright_cyan")
-                size_txt = Text(f"{human_size(size):>10}", style="bright_blue" if i < 5 else "grey62")
+                size_txt = Text(
+                    f"{human_size(size):>10}", style="bright_blue" if i < 5 else "grey62"
+                )
             elif view.kind == "items":
                 it: Item = row  # type: ignore[assignment]
                 size = item_size(it)
                 pct = size / total * 100
-                is_active = (scanner.current_item_id == id(it))
-                bar = animated_bar(phase=i * 3.0) if (it.scanning and size == 0) else render_bar(pct, i, max_pct, has_size=size > 0)
+                is_active = scanner.current_item_id == id(it)
+                bar = (
+                    animated_bar(phase=i * 3.0)
+                    if (it.scanning and size == 0)
+                    else render_bar(pct, i, max_pct, has_size=size > 0)
+                )
                 mark = "✓" if it.selected else " "
-                mark_style = "bright_green" if it.selected else "grey42"
                 disp = str(it.path)
-                if len(disp) > 48: disp = "…" + disp[-47:]
+                if len(disp) > 48:
+                    disp = "…" + disp[-47:]
                 spin = (spinner_char() + " ") if it.scanning else ""
-                file_icon = (view.category.icon if view.category else "📁")
-                name_style = ("bright_cyan" if is_cursor else "bright_yellow" if it.scanning else "white")
+                file_icon = view.category.icon if view.category else "📁"
+                name_style = (
+                    "bright_cyan" if is_cursor else "bright_yellow" if it.scanning else "white"
+                )
                 name = Text(f"[{mark}] {spin}{file_icon} {disp}", style=name_style)
                 pct_txt = Text(f"  {pct:5.1f}%", style="bright_cyan")
-                size_txt = Text(f"{human_size(size):>10}", style="bright_blue" if i < 5 else "grey62")
+                size_txt = Text(
+                    f"{human_size(size):>10}", style="bright_blue" if i < 5 else "grey62"
+                )
             elif view.kind in ("optimize", "uninstall"):
                 # Clean two-column, cell-aware, no-wrap layout.
                 from rich.cells import cell_len, set_cell_size
+
                 term_w = console.size.width or 120
                 right_w = 26
                 left_w = max(20, term_w - 4 - 4 - right_w - 2)
                 if view.kind == "optimize":
                     act: OptAction = row  # type: ignore[assignment]
-                    badge = (" [admin]" if act.requires_admin else "") + (" [high-risk]" if act.risk == "high" else "")
+                    badge = (" [admin]" if act.requires_admin else "") + (
+                        " [high-risk]" if act.risk == "high" else ""
+                    )
                     left_txt = f"🛠 {act.title}{badge}"
                     right_txt = act.description
                 else:
@@ -3370,7 +4232,9 @@ def render(scanner: Scanner, view: View, cursor: int, msg: str,
                 row_text.append("  ")
                 row_text.append(right_padded, style="grey50")
                 line = Text(no_wrap=True, overflow="crop")
-                line.append_text(prefix); line.append_text(idx_txt); line.append_text(row_text)
+                line.append_text(prefix)
+                line.append_text(idx_txt)
+                line.append_text(row_text)
                 line.append("\n")
                 body.append_text(line)
                 continue
@@ -3386,11 +4250,18 @@ def render(scanner: Scanner, view: View, cursor: int, msg: str,
 
         for _ in range(avail - rows_shown):
             body.append("\n")
-        body.append(("      " + T("footer_less", n=len(rows) - end) + "\n" if end < len(rows) else "\n"), style="grey42")
+        body.append(
+            ("      " + T("footer_less", n=len(rows) - end) + "\n" if end < len(rows) else "\n"),
+            style="grey42",
+        )
 
     # Status / message lines (fixed 2) with animation-style message display
     status = Text()
-    line1 = ("  " + scanner.status) if (scanner.status and not scanner.done and view.kind in ("cats", "items")) else ""
+    line1 = (
+        ("  " + scanner.status)
+        if (scanner.status and not scanner.done and view.kind in ("cats", "items"))
+        else ""
+    )
     line2 = ("  " + msg) if msg else ""
     # On the full-screen info views (dashboard/status/help) the two status rows
     # are always blank and only steal vertical space the input box needs, so
@@ -3400,17 +4271,32 @@ def render(scanner: Scanner, view: View, cursor: int, msg: str,
         footer = Text("\n".join(footer_lines), style="bold grey70")
         if palette is not None:
             p_query, p_cursor = palette
-            return Group(header, body, status, footer, render_palette(p_query, p_cursor, palette_limit))
+            return Group(
+                header, body, status, footer, render_palette(p_query, p_cursor, palette_limit)
+            )
         return Group(header, body, status, footer, render_command_input())
     status.append((line1 or " ") + "\n", style="grey50")
     # Enhanced message display with icon prefix detection for styled output
     if msg:
-        msg_prefix = msg[:3] if len(msg) >= 3 else ""
-        msg_style = "bold bright_green" if ("✓" in msg or "✅" in msg or "ok" in msg.lower()[:10] or "Done" in msg[:10] or "Deleted" in msg[:10] or "Cleaned" in msg[:10] or "Removed" in msg[:10]) else \
-                    "bold bright_red" if ("✗" in msg or "❌" in msg or "fail" in msg.lower()[:10] or "Error" in msg[:10]) else \
-                    "bold bright_yellow" if ("⚠" in msg or "⚠️" in msg or "Warning" in msg[:10] or "warn" in msg.lower()[:10]) else \
-                    "bold cyan" if ("cancelled" in msg.lower() or "aborted" in msg.lower()) else \
-                    "bold yellow"
+        msg_style = (
+            "bold bright_green"
+            if (
+                "✓" in msg
+                or "✅" in msg
+                or "ok" in msg.lower()[:10]
+                or "Done" in msg[:10]
+                or "Deleted" in msg[:10]
+                or "Cleaned" in msg[:10]
+                or "Removed" in msg[:10]
+            )
+            else "bold bright_red"
+            if ("✗" in msg or "❌" in msg or "fail" in msg.lower()[:10] or "Error" in msg[:10])
+            else "bold bright_yellow"
+            if ("⚠" in msg or "⚠️" in msg or "Warning" in msg[:10] or "warn" in msg.lower()[:10])
+            else "bold cyan"
+            if ("cancelled" in msg.lower() or "aborted" in msg.lower())
+            else "bold yellow"
+        )
         status.append("  " + line2 + "\n", style=msg_style)
     else:
         status.append((line2 or " ") + "\n", style="yellow")
@@ -3430,9 +4316,16 @@ def open_in_explorer(p: Path) -> None:
         subprocess.Popen(["explorer", str(p)])
 
 
-def confirm_delete(live: Live, scanner: Scanner, view: View, cursor: int,
-                   use_trash: bool, dry_run: bool, apps: List[dict],
-                   opt: List[dict]) -> str:
+def confirm_delete(
+    live: Live,
+    scanner: Scanner,
+    view: View,
+    cursor: int,
+    use_trash: bool,
+    dry_run: bool,
+    apps: List[dict],
+    opt: List[dict],
+) -> str:
     # Collect selected items, partitioned into protected (blocked) and deletable.
     candidates: List[Item] = []
     if view.kind == "items" and view.category is not None:
@@ -3445,21 +4338,26 @@ def confirm_delete(live: Live, scanner: Scanner, view: View, cursor: int,
                 if it.selected and not it.deleted:
                     candidates.append(it)
     protected = [it for it in candidates if is_protected_path(it.path)]
-    targets   = [it for it in candidates if not is_protected_path(it.path)]
+    targets = [it for it in candidates if not is_protected_path(it.path)]
     if not targets:
         return T("nothing_selected") if not protected else T("protected_header", n=len(protected))
 
     total = sum(t.size for t in targets)
-    if dry_run:    action_label = T("act_dry_run")
-    elif use_trash: action_label = T("act_trash")
-    else:           action_label = T("act_permanent")
+    if dry_run:
+        action_label = T("act_dry_run")
+    elif use_trash:
+        action_label = T("act_trash")
+    else:
+        action_label = T("act_permanent")
 
     # Build a scrollable preview: first 10 paths, then "and N more".
     danger = (not use_trash) and (not dry_run)
     border_color = "red" if danger else ("yellow" if dry_run else "cyan")
     body_txt = Text()
-    body_txt.append(T("confirm_header", n=len(targets), action=action_label, size=human_size(total)),
-                    style="bold red" if danger else "bold yellow")
+    body_txt.append(
+        T("confirm_header", n=len(targets), action=action_label, size=human_size(total)),
+        style="bold red" if danger else "bold yellow",
+    )
     body_txt.append("\n\n")
     preview_n = 10
     for it in targets[:preview_n]:
@@ -3512,7 +4410,7 @@ def confirm_delete(live: Live, scanner: Scanner, view: View, cursor: int,
         progress_bar.append(f" {done}/{total_count}", style="white")
         progress_bar.append(f"  {pct_done:5.1f}%", style="bright_cyan")
         elapsed = time.time() - start_time
-        elapsed_str = f"{elapsed:.1f}s" if elapsed < 60 else f"{elapsed/60:.1f}m"
+        elapsed_str = f"{elapsed:.1f}s" if elapsed < 60 else f"{elapsed / 60:.1f}m"
         disp = last_path
         if len(disp) > 65:
             disp = "…" + disp[-64:]
@@ -3524,11 +4422,18 @@ def confirm_delete(live: Live, scanner: Scanner, view: View, cursor: int,
         if err > 0:
             stats_line.append(f"  ✗ {err} errors", style="red")
         stats_line.append(f"  ⏱ {elapsed_str}", style="grey62")
-        live.update(Group(bg, Panel(
-            Group(progress_bar, current_item, stats_line),
-            title=T("confirm_title"), title_align="center",
-            border_style="cyan", padding=(1, 2),
-        )))
+        live.update(
+            Group(
+                bg,
+                Panel(
+                    Group(progress_bar, current_item, stats_line),
+                    title=T("confirm_title"),
+                    title_align="center",
+                    border_style="cyan",
+                    padding=(1, 2),
+                ),
+            )
+        )
 
     last_ui = 0.0
     if use_trash and not dry_run:
@@ -3536,9 +4441,10 @@ def confirm_delete(live: Live, scanner: Scanner, view: View, cursor: int,
         CHUNK = 20
         done = 0
         for start in range(0, total_count, CHUNK):
-            chunk = targets[start:start + CHUNK]
-            res = trash_paths_batch([it.path for it in chunk],
-                                    sizes={str(it.path): it.size for it in chunk})
+            chunk = targets[start : start + CHUNK]
+            res = trash_paths_batch(
+                [it.path for it in chunk], sizes={str(it.path): it.size for it in chunk}
+            )
             for it in chunk:
                 e = res.get(str(it.path))
                 if e is None:
@@ -3568,7 +4474,9 @@ def confirm_delete(live: Live, scanner: Scanner, view: View, cursor: int,
                 err += 1
 
     elapsed_total = time.time() - start_time
-    elapsed_total_str = f"{elapsed_total:.1f}s" if elapsed_total < 60 else f"{elapsed_total/60:.1f}m"
+    elapsed_total_str = (
+        f"{elapsed_total:.1f}s" if elapsed_total < 60 else f"{elapsed_total / 60:.1f}m"
+    )
 
     # ── Completion animation ──
     for frame in range(8):
@@ -3581,7 +4489,9 @@ def confirm_delete(live: Live, scanner: Scanner, view: View, cursor: int,
 
         result_icon = "✅" if err == 0 else "⚠️"
         result_line = Text()
-        result_line.append(f"\n  {result_icon} ", style="bright_green" if err == 0 else "bright_yellow")
+        result_line.append(
+            f"\n  {result_icon} ", style="bright_green" if err == 0 else "bright_yellow"
+        )
         if dry_run:
             result_line.append(T("done_dry", n=ok, size=human_size(total)), style="bold white")
         elif use_trash:
@@ -3593,17 +4503,28 @@ def confirm_delete(live: Live, scanner: Scanner, view: View, cursor: int,
         result_line.append(f"  ⏱ {elapsed_total_str}", style="grey62")
 
         # Pulsing effect on completion
-        border_styles = ["bright_green", "green", "bright_green", "green", "bright_green", "green", "cyan", "bright_green"]
-        live.update(Group(
-            bg,
-            Panel(
-                Group(comp_bar, result_line),
-                title=T("confirm_title") + " — " + ("✓" if err == 0 else "!"),
-                title_align="center",
-                border_style=border_styles[frame % len(border_styles)],
-                padding=(1, 2),
+        border_styles = [
+            "bright_green",
+            "green",
+            "bright_green",
+            "green",
+            "bright_green",
+            "green",
+            "cyan",
+            "bright_green",
+        ]
+        live.update(
+            Group(
+                bg,
+                Panel(
+                    Group(comp_bar, result_line),
+                    title=T("confirm_title") + " — " + ("✓" if err == 0 else "!"),
+                    title_align="center",
+                    border_style=border_styles[frame % len(border_styles)],
+                    padding=(1, 2),
+                ),
             )
-        ))
+        )
         time.sleep(0.06)
 
     if dry_run:
@@ -3652,52 +4573,93 @@ def run_first_launch_quick_clean() -> None:
             body = Text()
             body.append("\n  ")
             body.append(spin[fi % len(spin)], style="bright_cyan")
-            body.append(("  Hızlı tarama yapılıyor…  " if tr else "  Quick scan in progress…  "), style="bold white")
+            body.append(
+                ("  Hızlı tarama yapılıyor…  " if tr else "  Quick scan in progress…  "),
+                style="bold white",
+            )
             body.append((scanner.status or "")[:48], style="grey62")
             partial = sum(c.total for c in scanner.categories)
-            body.append((f"\n\n  Şimdiye dek bulunan: {human_size(partial)}\n" if tr
-                         else f"\n\n  Found so far: {human_size(partial)}\n"), style="green")
+            body.append(
+                (
+                    f"\n\n  Şimdiye dek bulunan: {human_size(partial)}\n"
+                    if tr
+                    else f"\n\n  Found so far: {human_size(partial)}\n"
+                ),
+                style="green",
+            )
             live.update(Panel(body, title=title, border_style="cyan", padding=(1, 2)))
             fi += 1
             time.sleep(0.08)
 
         # ── Build summary of safe, deletable targets ──
         report = collect_selected_targets(scanner.categories, estimated=False)
-        targets = [it for c in scanner.categories for it in c.items
-                   if it.selected and not it.deleted and not is_protected_path(it.path)]
+        targets = [
+            it
+            for c in scanner.categories
+            for it in c.items
+            if it.selected and not it.deleted and not is_protected_path(it.path)
+        ]
         total = report["total"]
 
         if not targets or total <= 0:
             _save_config_key("quick_clean_v2_done", True)
-            done = Text(("\n  ✓ Temizlenecek fazla veri bulunamadı. Sistem temiz.\n" if tr
-                         else "\n  ✓ Nothing significant to clean. Your system is tidy.\n"), style="bold green")
+            done = Text(
+                (
+                    "\n  ✓ Temizlenecek fazla veri bulunamadı. Sistem temiz.\n"
+                    if tr
+                    else "\n  ✓ Nothing significant to clean. Your system is tidy.\n"
+                ),
+                style="bold green",
+            )
             live.update(Panel(done, title=title, border_style="green", padding=(1, 2)))
             time.sleep(1.4)
             return
 
         cat_totals = []
         for c in scanner.categories:
-            ct = sum(it.size for it in c.items
-                     if it.selected and not it.deleted and not is_protected_path(it.path))
+            ct = sum(
+                it.size
+                for it in c.items
+                if it.selected and not it.deleted and not is_protected_path(it.path)
+            )
             if ct > 0:
                 cat_totals.append((c.title, ct))
         cat_totals.sort(key=lambda x: x[1], reverse=True)
 
         body = Text()
-        body.append(("\n  Tespit edilen fazla veri: " if tr else "\n  Detected clutter: "), style="white")
+        body.append(
+            ("\n  Tespit edilen fazla veri: " if tr else "\n  Detected clutter: "), style="white"
+        )
         body.append(human_size(total), style="bold bright_green")
-        body.append((f"   ({len(targets)} öğe)\n\n" if tr else f"   ({len(targets)} items)\n\n"), style="grey62")
+        body.append(
+            (f"   ({len(targets)} öğe)\n\n" if tr else f"   ({len(targets)} items)\n\n"),
+            style="grey62",
+        )
         for ttl, ct in cat_totals[:8]:
             body.append(f"   • {ttl[:28]:<28}", style="grey85")
             body.append(f"{human_size(ct):>10}\n", style="cyan")
         if len(cat_totals) > 8:
-            body.append((f"   … +{len(cat_totals) - 8} kategori daha\n" if tr
-                         else f"   … +{len(cat_totals) - 8} more categories\n"), style="grey50")
-        body.append(("\n  Seçilen öğeler Geri Dönüşüm Kutusu'na taşınacak (geri alınabilir).\n" if tr
-                     else "\n  Selected items go to the Recycle Bin (recoverable).\n"), style="grey62")
-        body.append("\n  [", style="grey50"); body.append("E", style="bold bright_green")
+            body.append(
+                (
+                    f"   … +{len(cat_totals) - 8} kategori daha\n"
+                    if tr
+                    else f"   … +{len(cat_totals) - 8} more categories\n"
+                ),
+                style="grey50",
+            )
+        body.append(
+            (
+                "\n  Seçilen öğeler Geri Dönüşüm Kutusu'na taşınacak (geri alınabilir).\n"
+                if tr
+                else "\n  Selected items go to the Recycle Bin (recoverable).\n"
+            ),
+            style="grey62",
+        )
+        body.append("\n  [", style="grey50")
+        body.append("E", style="bold bright_green")
         body.append(("] Temizle     " if tr else "] Clean     "), style="white")
-        body.append("[", style="grey50"); body.append("H", style="bold red")
+        body.append("[", style="grey50")
+        body.append("H", style="bold red")
         body.append(("] Atla" if tr else "] Skip"), style="white")
         live.update(Panel(body, title=title, border_style="cyan", padding=(1, 2)))
 
@@ -3728,9 +4690,10 @@ def run_first_launch_quick_clean() -> None:
         done = 0
         CHUNK = 20
         for start in range(0, n, CHUNK):
-            chunk = targets[start:start + CHUNK]
-            res = trash_paths_batch([it.path for it in chunk],
-                                    sizes={str(it.path): it.size for it in chunk})
+            chunk = targets[start : start + CHUNK]
+            res = trash_paths_batch(
+                [it.path for it in chunk], sizes={str(it.path): it.size for it in chunk}
+            )
             for it in chunk:
                 if res.get(str(it.path)) is None:
                     ok += 1
@@ -3742,9 +4705,19 @@ def run_first_launch_quick_clean() -> None:
             bar_w = 40
             filled = int(bar_w * done / n) if n else bar_w
             pbody = Text()
-            pbody.append((f"\n  Temizleniyor…  {done}/{n}\n\n" if tr else f"\n  Cleaning…  {done}/{n}\n\n"), style="bold white")
+            pbody.append(
+                (f"\n  Temizleniyor…  {done}/{n}\n\n" if tr else f"\n  Cleaning…  {done}/{n}\n\n"),
+                style="bold white",
+            )
             pbody.append("  [" + "█" * filled + "·" * (bar_w - filled) + "]\n", style="bright_cyan")
-            pbody.append((f"\n  Boşaltıldı: {human_size(freed)}" if tr else f"\n  Freed: {human_size(freed)}"), style="green")
+            pbody.append(
+                (
+                    f"\n  Boşaltıldı: {human_size(freed)}"
+                    if tr
+                    else f"\n  Freed: {human_size(freed)}"
+                ),
+                style="green",
+            )
             live.update(Panel(pbody, title=title, border_style="cyan", padding=(1, 2)))
 
         res = Text()
@@ -3760,12 +4733,14 @@ def run_first_launch_quick_clean() -> None:
 
 
 # ---------- Main loop ----------
-def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
-            use_cache: bool = True) -> None:
+def run_tui(
+    initial_view: str = "analyze", start_path: Optional[Path] = None, use_cache: bool = True
+) -> None:
     if os.name == "nt":
         os.system("")
         try:
             import ctypes
+
             ctypes.windll.kernel32.SetConsoleTitleW("wmole · disk cleaner")
         except Exception:
             pass
@@ -3780,7 +4755,7 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
     whitelist = load_whitelist()
     cfg = load_config()
     analyze_start = start_path or Path(str(cfg.get("analyze_start_path", USER))).expanduser()
-    landing_dashboard = (initial_view == "analyze" and start_path is None)
+    landing_dashboard = initial_view == "analyze" and start_path is None
     if initial_view == "purge":
         profile = "purge"
     elif initial_view in ("installer", "installers"):
@@ -3818,9 +4793,17 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
     elif initial_view in ("installer", "installers"):
         view_stack = [View(title="Installers", kind="cats")]
     elif landing_dashboard:
-        view_stack = [View(title=("Gösterge Paneli" if LANG == "tr" else "Dashboard"), kind="dashboard")]
+        view_stack = [
+            View(title=("Gösterge Paneli" if LANG == "tr" else "Dashboard"), kind="dashboard")
+        ]
     else:
-        view_stack = [View(title=f"Analyze · {analyze_start}", kind="items", category=build_fs_category(analyze_start))]
+        view_stack = [
+            View(
+                title=f"Analyze · {analyze_start}",
+                kind="items",
+                category=build_fs_category(analyze_start),
+            )
+        ]
     cursor = 0
     msg = ""
     if PENDING_UPDATE_FILE.exists():
@@ -3867,7 +4850,9 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                 trans_text = Text()
                 trans_text.append("\n\n\n")
                 trans_text.append(" " * ((console.size.width or 80) // 2 - tbar_w // 2 - 5))
-                trans_text.append("[" + "█" * tfilled + "·" * (tbar_w - tfilled) + "]", style="bright_cyan")
+                trans_text.append(
+                    "[" + "█" * tfilled + "·" * (tbar_w - tfilled) + "]", style="bright_cyan"
+                )
                 trans_text.append("\n")
                 trans_text.append(" " * ((console.size.width or 80) // 2 - len(view.title) // 2))
                 trans_text.append(view.title, style="bold white")
@@ -3876,8 +4861,19 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                 time.sleep(0.04)
                 continue
 
-            live.update(render(scanner, view, cursor, msg, use_trash, dry_run, apps_cache, opt_cache,
-                               palette=(palette_query, palette_cursor) if palette_open else None))
+            live.update(
+                render(
+                    scanner,
+                    view,
+                    cursor,
+                    msg,
+                    use_trash,
+                    dry_run,
+                    apps_cache,
+                    opt_cache,
+                    palette=(palette_query, palette_cursor) if palette_open else None,
+                )
+            )
             last_draw = time.time()
 
             key = None
@@ -3889,8 +4885,19 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                 now = time.time()
                 active = (not scanner.done) or view.kind in ("status", "dashboard")
                 if should_redraw(last_draw, now, scanner_active=active):
-                    live.update(render(scanner, view, cursor, msg, use_trash, dry_run, apps_cache, opt_cache,
-                                   palette=(palette_query, palette_cursor) if palette_open else None))
+                    live.update(
+                        render(
+                            scanner,
+                            view,
+                            cursor,
+                            msg,
+                            use_trash,
+                            dry_run,
+                            apps_cache,
+                            opt_cache,
+                            palette=(palette_query, palette_cursor) if palette_open else None,
+                        )
+                    )
                     last_draw = now
             if key is None:
                 continue
@@ -3903,59 +4910,95 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
             if palette_open:
                 rows_p = filter_palette(palette_query)
                 if key == "ESC":
-                    palette_open = False; palette_query = ""; palette_cursor = 0
+                    palette_open = False
+                    palette_query = ""
+                    palette_cursor = 0
                 elif key == "UP":
-                    if rows_p: palette_cursor = (palette_cursor - 1) % len(rows_p)
+                    if rows_p:
+                        palette_cursor = (palette_cursor - 1) % len(rows_p)
                 elif key == "DOWN":
-                    if rows_p: palette_cursor = (palette_cursor + 1) % len(rows_p)
+                    if rows_p:
+                        palette_cursor = (palette_cursor + 1) % len(rows_p)
                 elif key == "ENTER":
                     if rows_p:
                         cmd = rows_p[palette_cursor]
-                        palette_open = False; palette_query = ""; palette_cursor = 0
+                        palette_open = False
+                        palette_query = ""
+                        palette_cursor = 0
                         action = cmd["action"]
                         if action == "view:dashboard":
                             profile = "clean"
-                            scanner = Scanner(whitelist=whitelist, profile="clean", use_cache=use_cache)
+                            scanner = Scanner(
+                                whitelist=whitelist, profile="clean", use_cache=use_cache
+                            )
                             threading.Thread(target=scanner.run, daemon=True).start()
-                            view_stack = [View(title=("Gösterge Paneli" if LANG == "tr" else "Dashboard"), kind="dashboard")]; cursor = 0
+                            view_stack = [
+                                View(
+                                    title=("Gösterge Paneli" if LANG == "tr" else "Dashboard"),
+                                    kind="dashboard",
+                                )
+                            ]
+                            cursor = 0
                         elif action == "view:analyze-fs":
                             profile = "idle"
                             scanner = Scanner(whitelist=whitelist, profile="idle")
                             threading.Thread(target=scanner.run, daemon=True).start()
-                            view_stack = [View(title=f"Analyze · {analyze_start}", kind="items",
-                                               category=build_fs_category(analyze_start, live=live, scanner=scanner,
-                                                                          view=View(title="", kind="items"), cursor=0,
-                                                                          use_trash=use_trash, dry_run=dry_run,
-                                                                          apps=apps_cache, opt=opt_cache))]; cursor = 0
+                            view_stack = [
+                                View(
+                                    title=f"Analyze · {analyze_start}",
+                                    kind="items",
+                                    category=build_fs_category(
+                                        analyze_start,
+                                        live=live,
+                                        scanner=scanner,
+                                        view=View(title="", kind="items"),
+                                        cursor=0,
+                                        use_trash=use_trash,
+                                        dry_run=dry_run,
+                                        apps=apps_cache,
+                                        opt=opt_cache,
+                                    ),
+                                )
+                            ]
+                            cursor = 0
                         elif action == "view:cats":
                             profile = "full"
                             scanner = Scanner(whitelist=whitelist, profile="full")
                             threading.Thread(target=scanner.run, daemon=True).start()
-                            view_stack = [View(title="Analyze Categories", kind="cats")]; cursor = 0
+                            view_stack = [View(title="Analyze Categories", kind="cats")]
+                            cursor = 0
                         elif action == "view:clean":
                             profile = "clean"
                             scanner = Scanner(whitelist=whitelist, profile="clean")
                             threading.Thread(target=scanner.run, daemon=True).start()
-                            view_stack = [View(title="Safe Cleanup", kind="cats")]; cursor = 0
+                            view_stack = [View(title="Safe Cleanup", kind="cats")]
+                            cursor = 0
                         elif action == "view:purge":
                             profile = "purge"
                             scanner = Scanner(whitelist=whitelist, profile="purge")
                             threading.Thread(target=scanner.run, daemon=True).start()
-                            view_stack = [View(title="Purge Artifacts", kind="cats")]; cursor = 0
+                            view_stack = [View(title="Purge Artifacts", kind="cats")]
+                            cursor = 0
                         elif action == "view:installers":
                             profile = "installers"
                             scanner = Scanner(whitelist=whitelist, profile="installers")
                             threading.Thread(target=scanner.run, daemon=True).start()
-                            view_stack = [View(title="Installers", kind="cats")]; cursor = 0
+                            view_stack = [View(title="Installers", kind="cats")]
+                            cursor = 0
                         elif action == "view:uninstall":
-                            if not apps_cache: apps_cache = list_installed_apps()
-                            view_stack = [View(title="Uninstall", kind="uninstall")]; cursor = 0
+                            if not apps_cache:
+                                apps_cache = list_installed_apps()
+                            view_stack = [View(title="Uninstall", kind="uninstall")]
+                            cursor = 0
                         elif action == "view:optimize":
-                            view_stack = [View(title="Optimize", kind="optimize")]; cursor = 0
+                            view_stack = [View(title="Optimize", kind="optimize")]
+                            cursor = 0
                         elif action == "view:status":
-                            view_stack = [View(title="Status", kind="status")]; cursor = 0
+                            view_stack = [View(title="Status", kind="status")]
+                            cursor = 0
                         elif action == "view:help":
-                            view_stack.append(View(title=T("title_help"), kind="help")); cursor = 0
+                            view_stack.append(View(title=T("title_help"), kind="help"))
+                            cursor = 0
                         elif action == "exec:ports":
                             # Surface a quick snapshot via the status line; full mgmt in CLI.
                             try:
@@ -3966,14 +5009,18 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                         elif action == "exec:doctor":
                             try:
                                 summary = doctor_report()["summary"]
-                                msg = (f"doctor: ok={summary.get('ok', 0)} warn={summary.get('warn', 0)} "
-                                       f"fail={summary.get('fail', 0)} — full report: wmole doctor")
+                                msg = (
+                                    f"doctor: ok={summary.get('ok', 0)} warn={summary.get('warn', 0)} "
+                                    f"fail={summary.get('fail', 0)} — full report: wmole doctor"
+                                )
                             except Exception as e:
                                 msg = f"doctor failed: {e}"
                         elif action == "exec:undo":
                             try:
-                                msg = (f"{len(undo_entries())} restorable item(s) — "
-                                       f"run: wmole undo [<id>]")
+                                msg = (
+                                    f"{len(undo_entries())} restorable item(s) — "
+                                    f"run: wmole undo [<id>]"
+                                )
                             except Exception as e:
                                 msg = f"undo query failed: {e}"
                         elif action == "exec:hook":
@@ -3981,8 +5028,14 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                         elif action == "exec:update":
                             try:
                                 msg = interactive_tui_update(
-                                    live, scanner, view, cursor,
-                                    apps_cache, opt_cache, use_trash, dry_run
+                                    live,
+                                    scanner,
+                                    view,
+                                    cursor,
+                                    apps_cache,
+                                    opt_cache,
+                                    use_trash,
+                                    dry_run,
                                 )
                             except Exception as e:
                                 msg = f"update failed: {e}"
@@ -4014,18 +5067,22 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
 
             if up == "Q":
                 if len(view_stack) > 1:
-                    view_stack.pop(); cursor = 0
+                    view_stack.pop()
+                    cursor = 0
                 else:
                     break
             elif up == "ESC":
                 if len(view_stack) > 1:
-                    view_stack.pop(); cursor = 0
+                    view_stack.pop()
+                    cursor = 0
                 else:
                     break
             elif up == "UP":
-                if rows: cursor = (cursor - 1) % len(rows)
+                if rows:
+                    cursor = (cursor - 1) % len(rows)
             elif up == "DOWN":
-                if rows: cursor = (cursor + 1) % len(rows)
+                if rows:
+                    cursor = (cursor + 1) % len(rows)
             elif up == "K" and not shifted:
                 use_trash = not use_trash
                 msg = T("permanent_on") if not use_trash else T("permanent_off")
@@ -4040,21 +5097,34 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                 set_lang("en" if LANG == "tr" else "tr")
                 msg = T("lang_switched")
             elif up == "ENTER":
-                if not rows: continue
+                if not rows:
+                    continue
                 row = rows[cursor]
                 if view.kind == "cats" and isinstance(row, Category):
                     if row.items:
                         view_stack.append(View(title=row.title, kind="items", category=row))
                         cursor = 0
-                elif view.kind == "items" and view.category and view.category.key.startswith("fs:") and isinstance(row, Item):
+                elif (
+                    view.kind == "items"
+                    and view.category
+                    and view.category.key.startswith("fs:")
+                    and isinstance(row, Item)
+                ):
                     target = row.path
                     if row.error == "up":
                         target = row.path
                     if path_exists(target) and target.is_dir():
-                        new_cat = build_fs_category(target, live=live, scanner=scanner,
-                                                    view=view, cursor=cursor,
-                                                    use_trash=use_trash, dry_run=dry_run,
-                                                    apps=apps_cache, opt=opt_cache)
+                        new_cat = build_fs_category(
+                            target,
+                            live=live,
+                            scanner=scanner,
+                            view=view,
+                            cursor=cursor,
+                            use_trash=use_trash,
+                            dry_run=dry_run,
+                            apps=apps_cache,
+                            opt=opt_cache,
+                        )
                         view_stack.append(View(title=new_cat.title, kind="items", category=new_cat))
                         cursor = 0
                     else:
@@ -4063,14 +5133,42 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                     act = row  # OptAction
                     if act.risk == "high":
                         prompt = Text()
-                        prompt.append("  ⚠ High risk action. Press Y to continue, anything else to cancel.", style="bold red")
-                        live.update(Group(render(scanner, view, cursor, "", use_trash, dry_run, apps_cache, opt_cache), prompt))
+                        prompt.append(
+                            "  ⚠ High risk action. Press Y to continue, anything else to cancel.",
+                            style="bold red",
+                        )
+                        live.update(
+                            Group(
+                                render(
+                                    scanner,
+                                    view,
+                                    cursor,
+                                    "",
+                                    use_trash,
+                                    dry_run,
+                                    apps_cache,
+                                    opt_cache,
+                                ),
+                                prompt,
+                            )
+                        )
                         if read_key().upper() != "Y":
                             msg = "Cancelled."
                             continue
                     msg = f"Running: {act.title}…"
-                    live.update(render(scanner, view, cursor, msg, use_trash, dry_run, apps_cache, opt_cache,
-                               palette=(palette_query, palette_cursor) if palette_open else None))
+                    live.update(
+                        render(
+                            scanner,
+                            view,
+                            cursor,
+                            msg,
+                            use_trash,
+                            dry_run,
+                            apps_cache,
+                            opt_cache,
+                            palette=(palette_query, palette_cursor) if palette_open else None,
+                        )
+                    )
                     _, msg = run_optimize(act, dry_run=dry_run)
                 elif view.kind == "uninstall":
                     app = row
@@ -4099,9 +5197,15 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                             msg = f"Failed: {e}"
                     else:
                         msg = "No uninstall string recorded."
-            elif up == "G" and view.kind == "items" and view.category and view.category.key.startswith("fs:"):
+            elif (
+                up == "G"
+                and view.kind == "items"
+                and view.category
+                and view.category.key.startswith("fs:")
+            ):
                 base = Path(view.category.title)
                 threshold = int(load_config().get("large_file_min_mb", 512)) * 1024 * 1024
+
                 # Scan with live progress animation
                 def _large_progress(scanned, found):
                     filled = min(24, int(24 * (scanned % 50000) / 50000))
@@ -4109,10 +5213,20 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                     ptext = Text()
                     ptext.append(f"{bar}  Scanned {scanned} files", style="bright_cyan")
                     ptext.append(f"  Found {found} large", style="bright_yellow")
-                    live.update(Group(
-                        render(scanner, view, cursor, "", use_trash, dry_run, apps_cache, opt_cache),
-                        Panel(ptext, title="Scanning large files…", border_style="cyan", padding=(1, 2)),
-                    ))
+                    live.update(
+                        Group(
+                            render(
+                                scanner, view, cursor, "", use_trash, dry_run, apps_cache, opt_cache
+                            ),
+                            Panel(
+                                ptext,
+                                title="Scanning large files…",
+                                border_style="cyan",
+                                padding=(1, 2),
+                            ),
+                        )
+                    )
+
                 large = find_large_files(base, threshold, on_progress=_large_progress)
                 cat = Category(
                     key=f"fs-large:{base}",
@@ -4123,11 +5237,18 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                     scanning=False,
                 )
                 for row in large:
-                    cat.items.append(Item(path=Path(row["path"]), size=int(row["size"]), selected=False))
+                    cat.items.append(
+                        Item(path=Path(row["path"]), size=int(row["size"]), selected=False)
+                    )
                 view_stack.append(View(title=cat.title, kind="items", category=cat))
                 cursor = 0
                 msg = f"Found {len(large)} large files (>= {human_size(threshold)})"
-            elif up == "V" and view.kind == "items" and view.category and view.category.key.startswith("fs:"):
+            elif (
+                up == "V"
+                and view.kind == "items"
+                and view.category
+                and view.category.key.startswith("fs:")
+            ):
                 drives = build_drive_picker_category()
                 view_stack.append(View(title=drives.title, kind="items", category=drives))
                 cursor = 0
@@ -4153,7 +5274,8 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                         open_in_explorer(row.items[0].path)
                     elif view.kind == "uninstall":
                         loc = row.get("install_location")
-                        if loc: open_in_explorer(Path(loc))
+                        if loc:
+                            open_in_explorer(Path(loc))
             elif up == "L" and view.kind == "uninstall" and rows:
                 app = rows[cursor]
                 leftovers = find_leftover_candidates(app)
@@ -4179,25 +5301,56 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                 if not scanner.done:
                     msg = "Tarama sürüyor — birazdan tekrar deneyin."
                 else:
-                    msg = confirm_delete(live, scanner, view, cursor,
-                                         use_trash=use_trash,
-                                         dry_run=dry_run, apps=apps_cache, opt=opt_cache)
+                    msg = confirm_delete(
+                        live,
+                        scanner,
+                        view,
+                        cursor,
+                        use_trash=use_trash,
+                        dry_run=dry_run,
+                        apps=apps_cache,
+                        opt=opt_cache,
+                    )
             elif up == "S" and view.kind == "dashboard":
                 view_stack.append(View(title="Status", kind="status"))
                 cursor = 0
             elif up == "D" and view.kind in ("cats", "items"):
                 # `D` honors the current trash/permanent toggle (K).
-                msg = confirm_delete(live, scanner, view, cursor,
-                                     use_trash=use_trash,
-                                     dry_run=dry_run, apps=apps_cache, opt=opt_cache)
+                msg = confirm_delete(
+                    live,
+                    scanner,
+                    view,
+                    cursor,
+                    use_trash=use_trash,
+                    dry_run=dry_run,
+                    apps=apps_cache,
+                    opt=opt_cache,
+                )
             elif up == "R":
                 if view.kind in ("cats", "items"):
-                    if view.kind == "items" and view.category and view.category.key.startswith("fs:"):
+                    if (
+                        view.kind == "items"
+                        and view.category
+                        and view.category.key.startswith("fs:")
+                    ):
                         base = view.category.title
-                        view_stack = [View(title=f"Analyze · {base}", kind="items", category=build_fs_category(Path(base), live=live, scanner=scanner,
-                                                                                                              view=view, cursor=cursor,
-                                                                                                              use_trash=use_trash, dry_run=dry_run,
-                                                                                                              apps=apps_cache, opt=opt_cache))]
+                        view_stack = [
+                            View(
+                                title=f"Analyze · {base}",
+                                kind="items",
+                                category=build_fs_category(
+                                    Path(base),
+                                    live=live,
+                                    scanner=scanner,
+                                    view=view,
+                                    cursor=cursor,
+                                    use_trash=use_trash,
+                                    dry_run=dry_run,
+                                    apps=apps_cache,
+                                    opt=opt_cache,
+                                ),
+                            )
+                        ]
                         cursor = 0
                         msg = "Refreshed."
                     else:
@@ -4209,13 +5362,15 @@ def run_tui(initial_view: str = "analyze", start_path: Optional[Path] = None,
                 elif view.kind == "uninstall":
                     apps_cache = list_installed_apps()
                     msg = f"Reloaded {len(apps_cache)} programs."
+
+
 # ---------- CLI ----------
 def status_payload() -> dict:
     """Machine-readable system status. Returns {} if psutil unavailable."""
     if not psutil:
         return {}
     vm = psutil.virtual_memory()
-    du = psutil.disk_usage(USER.anchor or 'C:\\')
+    du = psutil.disk_usage(USER.anchor or "C:\\")
     net = psutil.net_io_counters()
     dio = psutil.disk_io_counters()
     bat = psutil.sensors_battery() if hasattr(psutil, "sensors_battery") else None
@@ -4228,22 +5383,31 @@ def status_payload() -> dict:
         except Exception:
             temps = {}
     return {
-        "health": health_score(), "cpu_percent": psutil.cpu_percent(interval=0.3),
-        "memory_percent": vm.percent, "memory_used": vm.used, "memory_total": vm.total,
-        "disk_percent": du.percent, "disk_free": du.free, "disk_total": du.total,
-        "disk_read_bytes": (dio.read_bytes if dio else 0), "disk_write_bytes": (dio.write_bytes if dio else 0),
-        "net_up_bytes": net.bytes_sent, "net_down_bytes": net.bytes_recv,
+        "health": health_score(),
+        "cpu_percent": psutil.cpu_percent(interval=0.3),
+        "memory_percent": vm.percent,
+        "memory_used": vm.used,
+        "memory_total": vm.total,
+        "disk_percent": du.percent,
+        "disk_free": du.free,
+        "disk_total": du.total,
+        "disk_read_bytes": (dio.read_bytes if dio else 0),
+        "disk_write_bytes": (dio.write_bytes if dio else 0),
+        "net_up_bytes": net.bytes_sent,
+        "net_down_bytes": net.bytes_recv,
         "uptime_seconds": int(time.time() - boot),
-        "battery_percent": (bat.percent if bat else None), "power_plugged": (bat.power_plugged if bat else None),
+        "battery_percent": (bat.percent if bat else None),
+        "power_plugged": (bat.power_plugged if bat else None),
         "device": {"system": sysinfo.system, "release": sysinfo.release, "node": sysinfo.node},
-        "temperature_sensors": {k: [{"label": t.label, "current": t.current} for t in v[:3]] for k, v in temps.items()},
+        "temperature_sensors": {
+            k: [{"label": t.label, "current": t.current} for t in v[:3]] for k, v in temps.items()
+        },
         "cpu_per_core": psutil.cpu_percent(interval=0.0, percpu=True),
         "cpu_count": psutil.cpu_count(logical=True),
     }
 
 
 # ---------- serve (NDJSON daemon for Tauri GUI) ----------
-import threading as _serve_threading
 
 
 def _serve_emit(lock, event: dict) -> None:
@@ -4281,13 +5445,23 @@ def _serve_scan(req: dict, emit, cancel) -> None:
             except OSError:
                 continue
             total_bytes += size
-            emit({"id": rid, "ev": "item", "path": str(child),
-                  "name": child.name, "size": size,
-                  "kind": "dir" if is_dir else "file", "selected": False})
-            emit({"id": rid, "ev": "progress", "done": idx + 1,
-                  "total": total, "label": child.name})
-        emit({"id": rid, "ev": "done", "ok": True,
-              "summary": {"count": total, "bytes": total_bytes}})
+            emit(
+                {
+                    "id": rid,
+                    "ev": "item",
+                    "path": str(child),
+                    "name": child.name,
+                    "size": size,
+                    "kind": "dir" if is_dir else "file",
+                    "selected": False,
+                }
+            )
+            emit(
+                {"id": rid, "ev": "progress", "done": idx + 1, "total": total, "label": child.name}
+            )
+        emit(
+            {"id": rid, "ev": "done", "ok": True, "summary": {"count": total, "bytes": total_bytes}}
+        )
         return
 
     if mode == "large":
@@ -4297,14 +5471,26 @@ def _serve_scan(req: dict, emit, cancel) -> None:
             if cancel.is_set():
                 emit({"id": rid, "ev": "done", "ok": False, "cancelled": True})
                 return
-            emit({"id": rid, "ev": "item", "path": str(f["path"]),
-                  "name": Path(f["path"]).name, "size": int(f["size"]),
-                  "kind": "large-file", "selected": False})
+            emit(
+                {
+                    "id": rid,
+                    "ev": "item",
+                    "path": str(f["path"]),
+                    "name": Path(f["path"]).name,
+                    "size": int(f["size"]),
+                    "kind": "large-file",
+                    "selected": False,
+                }
+            )
         emit({"id": rid, "ev": "done", "ok": True})
         return
 
-    profile = {"clean": "clean", "purge": "purge",
-               "installers": "installers", "categories": "full"}.get(mode, "clean")
+    profile = {
+        "clean": "clean",
+        "purge": "purge",
+        "installers": "installers",
+        "categories": "full",
+    }.get(mode, "clean")
 
     # Stream every artifact the moment it has been sized. Previously the whole
     # scan ran as one blocking call that emitted nothing and only looked at
@@ -4313,19 +5499,32 @@ def _serve_scan(req: dict, emit, cancel) -> None:
 
     def on_item(cat, it) -> None:
         streamed.add(str(it.path))
-        emit({"id": rid, "ev": "item", "path": str(it.path),
-              "name": it.path.name, "size": int(it.size),
-              "kind": cat.key, "category": cat.title,
-              "truncated": bool(getattr(it, "truncated", False)),
-              "selected": bool(it.selected)})
+        emit(
+            {
+                "id": rid,
+                "ev": "item",
+                "path": str(it.path),
+                "name": it.path.name,
+                "size": int(it.size),
+                "kind": cat.key,
+                "category": cat.title,
+                "truncated": bool(getattr(it, "truncated", False)),
+                "selected": bool(it.selected),
+            }
+        )
 
     def on_progress(done: int, label: str) -> None:
-        emit({"id": rid, "ev": "progress", "done": done, "total": 0,
-              "label": label})
+        emit({"id": rid, "ev": "progress", "done": done, "total": 0, "label": label})
 
-    scanner = Scanner(whitelist=load_whitelist(), profile=profile,
-                      roots=paths or None, use_cache=not req.get("no_cache"),
-                      on_item=on_item, on_progress=on_progress, cancel=cancel)
+    scanner = Scanner(
+        whitelist=load_whitelist(),
+        profile=profile,
+        roots=paths or None,
+        use_cache=not req.get("no_cache"),
+        on_item=on_item,
+        on_progress=on_progress,
+        cancel=cancel,
+    )
     scanner.run()
     if cancel.is_set():
         emit({"id": rid, "ev": "done", "ok": False, "cancelled": True})
@@ -4343,13 +5542,20 @@ def _serve_scan(req: dict, emit, cancel) -> None:
             if it.deleted or str(it.path) in streamed:
                 continue
             count += 1
-            emit({"id": rid, "ev": "item", "path": str(it.path),
-                  "name": it.path.name, "size": int(it.size),
-                  "kind": cat.key, "category": cat.title,
-                  "truncated": bool(getattr(it, "truncated", False)),
-                  "selected": bool(it.selected)})
-    emit({"id": rid, "ev": "done", "ok": True,
-          "summary": {"count": count, "bytes": total}})
+            emit(
+                {
+                    "id": rid,
+                    "ev": "item",
+                    "path": str(it.path),
+                    "name": it.path.name,
+                    "size": int(it.size),
+                    "kind": cat.key,
+                    "category": cat.title,
+                    "truncated": bool(getattr(it, "truncated", False)),
+                    "selected": bool(it.selected),
+                }
+            )
+    emit({"id": rid, "ev": "done", "ok": True, "summary": {"count": count, "bytes": total}})
 
 
 def _serve_delete(req: dict, emit, cancel) -> None:
@@ -4361,22 +5567,42 @@ def _serve_delete(req: dict, emit, cancel) -> None:
     ok = err = 0
     for idx, path in enumerate(targets):
         if cancel.is_set():
-            emit({"id": rid, "ev": "done", "ok": False, "cancelled": True,
-                  "summary": {"ok": ok, "err": err}})
+            emit(
+                {
+                    "id": rid,
+                    "ev": "done",
+                    "ok": False,
+                    "cancelled": True,
+                    "summary": {"ok": ok, "err": err},
+                }
+            )
             return
         error = delete_path(path, use_trash=use_trash, dry_run=dry_run)
         if error:
             err += 1
-            emit({"id": rid, "ev": "item_result", "path": str(path),
-                  "ok": False, "error": error})
+            emit({"id": rid, "ev": "item_result", "path": str(path), "ok": False, "error": error})
         else:
             ok += 1
-            emit({"id": rid, "ev": "item_result", "path": str(path),
-                  "ok": True, "trashed": use_trash, "dry_run": dry_run})
-        emit({"id": rid, "ev": "progress", "done": idx + 1, "total": len(targets),
-              "label": str(path)})
-    emit({"id": rid, "ev": "done", "ok": True,
-          "summary": {"ok": ok, "err": err}})
+            emit(
+                {
+                    "id": rid,
+                    "ev": "item_result",
+                    "path": str(path),
+                    "ok": True,
+                    "trashed": use_trash,
+                    "dry_run": dry_run,
+                }
+            )
+        emit(
+            {
+                "id": rid,
+                "ev": "progress",
+                "done": idx + 1,
+                "total": len(targets),
+                "label": str(path),
+            }
+        )
+    emit({"id": rid, "ev": "done", "ok": True, "summary": {"ok": ok, "err": err}})
 
 
 def _serve_uninstall_list(req: dict, emit, cancel) -> None:
@@ -4389,12 +5615,22 @@ def _serve_uninstall_list(req: dict, emit, cancel) -> None:
             emit({"id": rid, "ev": "done", "ok": False, "cancelled": True})
             return
         size = int(app.get("estimated_size_kb") or 0) * 1024
-        emit({"id": rid, "ev": "item", "path": app.get("uninstall_key", ""),
-              "name": app.get("name", ""), "size": size, "kind": "app",
-              "publisher": app.get("publisher", ""), "version": app.get("version", ""),
-              "install_location": app.get("install_location", ""),
-              "uninstall": app.get("uninstall", ""), "selected": False,
-              "app": app})
+        emit(
+            {
+                "id": rid,
+                "ev": "item",
+                "path": app.get("uninstall_key", ""),
+                "name": app.get("name", ""),
+                "size": size,
+                "kind": "app",
+                "publisher": app.get("publisher", ""),
+                "version": app.get("version", ""),
+                "install_location": app.get("install_location", ""),
+                "uninstall": app.get("uninstall", ""),
+                "selected": False,
+                "app": app,
+            }
+        )
     emit({"id": rid, "ev": "done", "ok": True, "summary": {"count": len(apps)}})
 
 
@@ -4407,11 +5643,29 @@ def _serve_leftovers(req: dict, emit, cancel) -> None:
         if cancel.is_set():
             emit({"id": rid, "ev": "done", "ok": False, "cancelled": True})
             return
-        emit({"id": rid, "ev": "item", "path": str(it.path), "name": it.path.name,
-              "size": int(it.size), "kind": "leftover-file", "selected": False})
+        emit(
+            {
+                "id": rid,
+                "ev": "item",
+                "path": str(it.path),
+                "name": it.path.name,
+                "size": int(it.size),
+                "kind": "leftover-file",
+                "selected": False,
+            }
+        )
     for key in find_registry_leftover_candidates(app):
-        emit({"id": rid, "ev": "item", "path": key, "name": key,
-              "size": 0, "kind": "leftover-reg", "selected": False})
+        emit(
+            {
+                "id": rid,
+                "ev": "item",
+                "path": key,
+                "name": key,
+                "size": 0,
+                "kind": "leftover-reg",
+                "selected": False,
+            }
+        )
     emit({"id": rid, "ev": "done", "ok": True})
 
 
@@ -4432,8 +5686,14 @@ def _serve_uninstall_run(req: dict, emit, cancel) -> None:
             uninst = requested
             break
     if not uninst:
-        emit({"id": rid, "ev": "error", "code": "no_uninstall_string",
-              "message": "uninstall string not found in registry inventory"})
+        emit(
+            {
+                "id": rid,
+                "ev": "error",
+                "code": "no_uninstall_string",
+                "message": "uninstall string not found in registry inventory",
+            }
+        )
         emit({"id": rid, "ev": "done", "ok": False})
         return
     try:
@@ -4449,10 +5709,20 @@ def _serve_optimize_list(req: dict, emit, cancel) -> None:
     rid = req.get("id")
     emit({"id": rid, "ev": "started", "total_hint": None})
     for act in OPTIMIZE_ACTIONS:
-        emit({"id": rid, "ev": "item", "path": act.key, "name": act.title,
-              "size": 0, "kind": "optimize", "description": act.description,
-              "risk": act.risk, "requires_admin": act.requires_admin,
-              "selected": False})
+        emit(
+            {
+                "id": rid,
+                "ev": "item",
+                "path": act.key,
+                "name": act.title,
+                "size": 0,
+                "kind": "optimize",
+                "description": act.description,
+                "risk": act.risk,
+                "requires_admin": act.requires_admin,
+                "selected": False,
+            }
+        )
     emit({"id": rid, "ev": "done", "ok": True})
 
 
@@ -4468,14 +5738,28 @@ def _serve_optimize_run(req: dict, emit, cancel) -> None:
             return
         act = by_key.get(key)
         if not act:
-            emit({"id": rid, "ev": "item_result", "path": key, "ok": False,
-                  "error": "unknown action"})
+            emit(
+                {
+                    "id": rid,
+                    "ev": "item_result",
+                    "path": key,
+                    "ok": False,
+                    "error": "unknown action",
+                }
+            )
             continue
         ok, msg = run_optimize(act, dry_run=dry_run)
-        emit({"id": rid, "ev": "item_result", "path": key, "ok": ok,
-              "message": msg, "title": act.title})
-        emit({"id": rid, "ev": "progress", "done": idx + 1, "total": len(keys),
-              "label": act.title})
+        emit(
+            {
+                "id": rid,
+                "ev": "item_result",
+                "path": key,
+                "ok": ok,
+                "message": msg,
+                "title": act.title,
+            }
+        )
+        emit({"id": rid, "ev": "progress", "done": idx + 1, "total": len(keys), "label": act.title})
     emit({"id": rid, "ev": "done", "ok": True})
 
 
@@ -4485,13 +5769,24 @@ def _serve_ports_list(req: dict, emit, cancel) -> None:
     rows = list_dev_ports(include_all=bool(req.get("all_binds")))
     for r in rows:
         bind_ip = r.get("ip", "")
-        emit({"id": rid, "ev": "item",
-              "path": f"{r['proto']}|{bind_ip}|{r['port']}|{r.get('pid') or ''}",
-              "name": f"{r['proto']}/{r['port']}", "size": 0, "kind": "port",
-              "port": r["port"], "pid": r.get("pid"), "proto": r["proto"],
-              "process": r.get("process", ""), "ip": bind_ip,
-              "project": r.get("project", ""),
-              "hint": r.get("hint", ""), "selected": False})
+        emit(
+            {
+                "id": rid,
+                "ev": "item",
+                "path": f"{r['proto']}|{bind_ip}|{r['port']}|{r.get('pid') or ''}",
+                "name": f"{r['proto']}/{r['port']}",
+                "size": 0,
+                "kind": "port",
+                "port": r["port"],
+                "pid": r.get("pid"),
+                "proto": r["proto"],
+                "process": r.get("process", ""),
+                "ip": bind_ip,
+                "project": r.get("project", ""),
+                "hint": r.get("hint", ""),
+                "selected": False,
+            }
+        )
     emit({"id": rid, "ev": "done", "ok": True, "summary": {"count": len(rows)}})
 
 
@@ -4507,15 +5802,28 @@ def _serve_ports_kill(req: dict, emit, cancel) -> None:
         try:
             pid_num = int(pid)
         except (TypeError, ValueError):
-            emit({"id": rid, "ev": "item_result", "path": str(pid), "ok": False,
-                  "message": f"invalid pid: {pid!r}"})
+            emit(
+                {
+                    "id": rid,
+                    "ev": "item_result",
+                    "path": str(pid),
+                    "ok": False,
+                    "message": f"invalid pid: {pid!r}",
+                }
+            )
             continue
         ok, msg = kill_pid(pid_num, dry_run=dry_run)
         log_operation("port_kill", Path(f"pid:{pid_num}"), 0, msg)
-        emit({"id": rid, "ev": "item_result", "path": str(pid_num), "ok": ok,
-              "message": msg})
-        emit({"id": rid, "ev": "progress", "done": idx + 1, "total": len(pids),
-              "label": f"pid {pid}"})
+        emit({"id": rid, "ev": "item_result", "path": str(pid_num), "ok": ok, "message": msg})
+        emit(
+            {
+                "id": rid,
+                "ev": "progress",
+                "done": idx + 1,
+                "total": len(pids),
+                "label": f"pid {pid}",
+            }
+        )
     emit({"id": rid, "ev": "done", "ok": True})
 
 
@@ -4524,8 +5832,7 @@ def _serve_update(req: dict, emit, cancel) -> None:
     dry_run = bool(req.get("dry_run"))
     emit({"id": rid, "ev": "started", "total_hint": None})
     payload: dict = {}
-    cli_update(json_out=False, yes=bool(req.get("yes")),
-               dry_run=dry_run, quiet=True, sink=payload)
+    cli_update(json_out=False, yes=bool(req.get("yes")), dry_run=dry_run, quiet=True, sink=payload)
     emit({"id": rid, "ev": "done", "ok": True, "payload": payload})
 
 
@@ -4551,11 +5858,17 @@ def _serve_drives(req: dict, emit, cancel) -> None:
         for part in psutil.disk_partitions(all=False):
             try:
                 u = psutil.disk_usage(part.mountpoint)
-                drives.append({
-                    "device": part.device, "mountpoint": part.mountpoint,
-                    "fstype": part.fstype, "total": u.total, "used": u.used,
-                    "free": u.free, "percent": u.percent,
-                })
+                drives.append(
+                    {
+                        "device": part.device,
+                        "mountpoint": part.mountpoint,
+                        "fstype": part.fstype,
+                        "total": u.total,
+                        "used": u.used,
+                        "free": u.free,
+                        "percent": u.percent,
+                    }
+                )
             except Exception:
                 continue
     emit({"id": rid, "ev": "done", "ok": True, "payload": {"drives": drives}})
@@ -4596,18 +5909,27 @@ def _write_list_file(path: Path, items: list) -> None:
 
 def _serve_settings_get(req: dict, emit, cancel) -> None:
     rid = req.get("id")
-    emit({"id": rid, "ev": "done", "ok": True, "payload": {
-        "config": load_config(),
-        "whitelist": _read_list_file(WHITELIST_FILE),
-        "denylist": _read_list_file(DENYLIST_FILE),
-        "purge_paths": _read_list_file(PURGE_PATHS_FILE),
-    }})
+    emit(
+        {
+            "id": rid,
+            "ev": "done",
+            "ok": True,
+            "payload": {
+                "config": load_config(),
+                "whitelist": _read_list_file(WHITELIST_FILE),
+                "denylist": _read_list_file(DENYLIST_FILE),
+                "purge_paths": _read_list_file(PURGE_PATHS_FILE),
+            },
+        }
+    )
 
 
 def _serve_settings_set(req: dict, emit, cancel) -> None:
-    rid = req.get("id")
-    files = {"whitelist": WHITELIST_FILE, "denylist": DENYLIST_FILE,
-             "purge_paths": PURGE_PATHS_FILE}
+    files = {
+        "whitelist": WHITELIST_FILE,
+        "denylist": DENYLIST_FILE,
+        "purge_paths": PURGE_PATHS_FILE,
+    }
     for key, fp in files.items():
         if key in req and isinstance(req[key], list):
             _write_list_file(fp, [str(x) for x in req[key]])
@@ -4621,6 +5943,7 @@ def _serve_is_admin(req: dict, emit, cancel) -> None:
     admin = False
     try:
         import ctypes
+
         admin = bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
         pass
@@ -4633,8 +5956,7 @@ def _serve_completion_install(req: dict, emit, cancel) -> None:
         script = powershell_completion_script()
         WMOLE_DIR.mkdir(parents=True, exist_ok=True)
         COMPLETION_FILE.write_text(script + "\n", encoding="utf-8")
-        emit({"id": rid, "ev": "done", "ok": True,
-              "payload": {"path": str(COMPLETION_FILE)}})
+        emit({"id": rid, "ev": "done", "ok": True, "payload": {"path": str(COMPLETION_FILE)}})
     except Exception as exc:
         emit({"id": rid, "ev": "error", "code": "completion_failed", "message": str(exc)})
         emit({"id": rid, "ev": "done", "ok": False})
@@ -4648,14 +5970,17 @@ def _serve_schedule_get(req: dict, emit, cancel) -> None:
     enabled = False
     detail = ""
     try:
-        r = subprocess.run(["schtasks", "/query", "/tn", SCHED_TASK_NAME],
-                           capture_output=True, text=True, timeout=15)
+        r = subprocess.run(
+            ["schtasks", "/query", "/tn", SCHED_TASK_NAME],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
         enabled = r.returncode == 0
         detail = (r.stdout or "").strip()[:400]
     except Exception:
         pass
-    emit({"id": rid, "ev": "done", "ok": True,
-          "payload": {"enabled": enabled, "detail": detail}})
+    emit({"id": rid, "ev": "done", "ok": True, "payload": {"enabled": enabled, "detail": detail}})
 
 
 def _serve_schedule_set(req: dict, emit, cancel) -> None:
@@ -4669,13 +5994,35 @@ def _serve_schedule_set(req: dict, emit, cancel) -> None:
     else:
         cmd_str = f'"{exe}" "{os.path.abspath(__file__)}" clean --yes'
     try:
-        r = subprocess.run([
-            "schtasks", "/create", "/f", "/tn", SCHED_TASK_NAME,
-            "/sc", "weekly", "/d", day, "/st", time_s, "/tr", cmd_str,
-        ], capture_output=True, text=True, timeout=20)
+        r = subprocess.run(
+            [
+                "schtasks",
+                "/create",
+                "/f",
+                "/tn",
+                SCHED_TASK_NAME,
+                "/sc",
+                "weekly",
+                "/d",
+                day,
+                "/st",
+                time_s,
+                "/tr",
+                cmd_str,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
         ok = r.returncode == 0
-        emit({"id": rid, "ev": "done", "ok": ok,
-              "payload": {"message": (r.stdout or r.stderr).strip()}})
+        emit(
+            {
+                "id": rid,
+                "ev": "done",
+                "ok": ok,
+                "payload": {"message": (r.stdout or r.stderr).strip()},
+            }
+        )
     except Exception as exc:
         emit({"id": rid, "ev": "error", "code": "schedule_failed", "message": str(exc)})
         emit({"id": rid, "ev": "done", "ok": False})
@@ -4684,10 +6031,20 @@ def _serve_schedule_set(req: dict, emit, cancel) -> None:
 def _serve_schedule_clear(req: dict, emit, cancel) -> None:
     rid = req.get("id")
     try:
-        r = subprocess.run(["schtasks", "/delete", "/f", "/tn", SCHED_TASK_NAME],
-                           capture_output=True, text=True, timeout=15)
-        emit({"id": rid, "ev": "done", "ok": r.returncode == 0,
-              "payload": {"message": (r.stdout or r.stderr).strip()}})
+        r = subprocess.run(
+            ["schtasks", "/delete", "/f", "/tn", SCHED_TASK_NAME],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        emit(
+            {
+                "id": rid,
+                "ev": "done",
+                "ok": r.returncode == 0,
+                "payload": {"message": (r.stdout or r.stderr).strip()},
+            }
+        )
     except Exception as exc:
         emit({"id": rid, "ev": "error", "code": "schedule_failed", "message": str(exc)})
         emit({"id": rid, "ev": "done", "ok": False})
@@ -4702,6 +6059,7 @@ def _startup_approved_key(location: str):
     """(hive, subkey) of the StartupApproved key Windows itself uses (Task
     Manager > Startup) to switch an entry off without deleting it."""
     import winreg
+
     if location == "Startup Folder":
         return winreg.HKEY_CURRENT_USER, _APPROVED_KEY + r"\StartupFolder"
     hive = winreg.HKEY_CURRENT_USER if location.startswith("HKCU") else winreg.HKEY_LOCAL_MACHINE
@@ -4710,6 +6068,7 @@ def _startup_approved_key(location: str):
 
 def _startup_enabled(location: str, name: str) -> bool:
     import winreg
+
     hive, sub = _startup_approved_key(location)
     try:
         with winreg.OpenKey(hive, sub) as key:
@@ -4722,16 +6081,24 @@ def _startup_enabled(location: str, name: str) -> bool:
 def set_startup_enabled(location: str, name: str, enabled: bool) -> None:
     """Raises OSError (e.g. access denied for HKLM without admin)."""
     import winreg
+
     if location not in ("HKCU\\Run", "HKLM\\Run", "Startup Folder"):
         raise OSError(f"unknown startup location: {location}")
     hive, sub = _startup_approved_key(location)
-    stamp = b"\x00" * 8 if enabled else int(
-        (time.time() + 11644473600) * 10_000_000).to_bytes(8, "little")  # FILETIME
+    stamp = (
+        b"\x00" * 8
+        if enabled
+        else int((time.time() + 11644473600) * 10_000_000).to_bytes(8, "little")
+    )  # FILETIME
     with winreg.CreateKeyEx(hive, sub, 0, winreg.KEY_SET_VALUE) as key:
-        winreg.SetValueEx(key, name, 0, winreg.REG_BINARY,
-                          (b"\x02" if enabled else b"\x03") + b"\x00" * 3 + stamp)
-    log_operation("startup-enabled" if enabled else "startup-disabled",
-                  Path(f"{location}\\{name}"), result="ok")
+        winreg.SetValueEx(
+            key, name, 0, winreg.REG_BINARY, (b"\x02" if enabled else b"\x03") + b"\x00" * 3 + stamp
+        )
+    log_operation(
+        "startup-enabled" if enabled else "startup-disabled",
+        Path(f"{location}\\{name}"),
+        result="ok",
+    )
 
 
 def _startup_entries() -> list:
@@ -4739,7 +6106,11 @@ def _startup_entries() -> list:
     entries = []
     try:
         import winreg
-        for hive, label in ((winreg.HKEY_CURRENT_USER, "HKCU"), (winreg.HKEY_LOCAL_MACHINE, "HKLM")):
+
+        for hive, label in (
+            (winreg.HKEY_CURRENT_USER, "HKCU"),
+            (winreg.HKEY_LOCAL_MACHINE, "HKLM"),
+        ):
             try:
                 with winreg.OpenKey(hive, _RUN_KEY) as key:
                     i = 0
@@ -4750,16 +6121,28 @@ def _startup_entries() -> list:
                             break
                         i += 1
                         location = f"{label}\\Run"
-                        entries.append({"name": name, "command": val, "location": location,
-                                        "enabled": _startup_enabled(location, name)})
+                        entries.append(
+                            {
+                                "name": name,
+                                "command": val,
+                                "location": location,
+                                "enabled": _startup_enabled(location, name),
+                            }
+                        )
             except OSError:
                 pass
         if STARTUP_FOLDER.is_dir():
             for f in STARTUP_FOLDER.iterdir():
                 if f.name.lower() == "desktop.ini":
                     continue
-                entries.append({"name": f.name, "command": str(f), "location": "Startup Folder",
-                                "enabled": _startup_enabled("Startup Folder", f.name)})
+                entries.append(
+                    {
+                        "name": f.name,
+                        "command": str(f),
+                        "location": "Startup Folder",
+                        "enabled": _startup_enabled("Startup Folder", f.name),
+                    }
+                )
     except (ImportError, OSError):
         pass
     return entries
@@ -4769,9 +6152,19 @@ def _serve_startup_list(req: dict, emit, cancel) -> None:
     rid = req.get("id")
     emit({"id": rid, "ev": "started", "total_hint": None})
     for e in _startup_entries():
-        emit({"id": rid, "ev": "item", "path": e["command"], "name": e["name"],
-              "size": 0, "kind": "startup", "location": e["location"],
-              "enabled": e["enabled"], "selected": False})
+        emit(
+            {
+                "id": rid,
+                "ev": "item",
+                "path": e["command"],
+                "name": e["name"],
+                "size": 0,
+                "kind": "startup",
+                "location": e["location"],
+                "enabled": e["enabled"],
+                "selected": False,
+            }
+        )
     emit({"id": rid, "ev": "done", "ok": True})
 
 
@@ -4799,18 +6192,35 @@ def _serve_processes_list(req: dict, emit, cancel) -> None:
             try:
                 info = p.info
                 mem = info["memory_info"].rss if info.get("memory_info") else 0
-                procs.append({"pid": info["pid"], "name": info.get("name") or "?",
-                              "mem": mem, "cpu": info.get("cpu_percent") or 0.0})
+                procs.append(
+                    {
+                        "pid": info["pid"],
+                        "name": info.get("name") or "?",
+                        "mem": mem,
+                        "cpu": info.get("cpu_percent") or 0.0,
+                    }
+                )
             except (psutil.Error, OSError, KeyError):
                 continue
     procs.sort(key=lambda x: x["mem"], reverse=True)
     protected_names = CRITICAL_PROCESSES | {
-        str(v).lower() for v in load_config().get("protected_processes", [])}
+        str(v).lower() for v in load_config().get("protected_processes", [])
+    }
     for p in procs[:300]:
-        emit({"id": rid, "ev": "item", "path": str(p["pid"]), "name": p["name"],
-              "size": p["mem"], "kind": "process", "pid": p["pid"],
-              "cpu": p["cpu"], "protected": p["name"].lower() in protected_names,
-              "selected": False})
+        emit(
+            {
+                "id": rid,
+                "ev": "item",
+                "path": str(p["pid"]),
+                "name": p["name"],
+                "size": p["mem"],
+                "kind": "process",
+                "pid": p["pid"],
+                "cpu": p["cpu"],
+                "protected": p["name"].lower() in protected_names,
+                "selected": False,
+            }
+        )
     emit({"id": rid, "ev": "done", "ok": True, "summary": {"count": len(procs)}})
 
 
@@ -4877,8 +6287,7 @@ def _serve_duplicates(req: dict, emit, cancel) -> None:
                     by_size.setdefault(sz, []).append(fp)
             scanned += 1
             if scanned % 200 == 0:
-                emit({"id": rid, "ev": "progress", "done": scanned, "total": 0,
-                      "label": dirpath})
+                emit({"id": rid, "ev": "progress", "done": scanned, "total": 0, "label": dirpath})
     groups = 0
     for sz, paths in by_size.items():
         if len(paths) < 2:
@@ -4890,9 +6299,18 @@ def _serve_duplicates(req: dict, emit, cancel) -> None:
         for digest, dups in hashes.items():
             groups += 1
             for fp in dups:
-                emit({"id": rid, "ev": "item", "path": str(fp), "name": fp.name,
-                      "size": sz, "kind": "duplicate", "group": digest[:8],
-                      "selected": False})
+                emit(
+                    {
+                        "id": rid,
+                        "ev": "item",
+                        "path": str(fp),
+                        "name": fp.name,
+                        "size": sz,
+                        "kind": "duplicate",
+                        "group": digest[:8],
+                        "selected": False,
+                    }
+                )
     emit({"id": rid, "ev": "done", "ok": True, "summary": {"groups": groups}})
 
 
@@ -4900,8 +6318,10 @@ SECRET_PATTERNS = [
     ("private-key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
     ("github-token", re.compile(r"\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}\b")),
     ("aws-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ("generic-secret", re.compile(
-        r"(?i)\b(?:api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"]?([^\s'\"]{12,})")),
+    (
+        "generic-secret",
+        re.compile(r"(?i)\b(?:api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"]?([^\s'\"]{12,})"),
+    ),
 ]
 SCAN_SKIP_DIRS = {".git", "node_modules", "target", "dist", "build", ".venv", "venv", "__pycache__"}
 
@@ -4936,17 +6356,27 @@ def scan_secrets(root: Path, cancel=None, max_files: int = 5000) -> dict:
                     if match:
                         value = match.group(0)
                         preview = value[:4] + "..." if len(value) > 10 else "[redacted]"
-                        findings.append({
-                            "type": kind, "path": str(path), "line": line_no,
-                            "preview": preview, "severity": "high",
-                        })
+                        findings.append(
+                            {
+                                "type": kind,
+                                "path": str(path),
+                                "line": line_no,
+                                "preview": preview,
+                                "severity": "high",
+                            }
+                        )
                         break
         if scanned >= max_files:
             break
-    log_security_event("secret-scan", {"root": str(root), "scanned": scanned,
-                                       "findings": len(findings)})
-    return {"root": str(root), "scanned": scanned, "findings": findings,
-            "truncated": scanned >= max_files}
+    log_security_event(
+        "secret-scan", {"root": str(root), "scanned": scanned, "findings": len(findings)}
+    )
+    return {
+        "root": str(root),
+        "scanned": scanned,
+        "findings": findings,
+        "truncated": scanned >= max_files,
+    }
 
 
 def _run_audit(command: list[str], cwd: Path, timeout: int = 90) -> dict:
@@ -4957,11 +6387,16 @@ def _run_audit(command: list[str], cwd: Path, timeout: int = 90) -> dict:
         # Windows: npm/yarn/pip are .cmd shims; CreateProcess can't resolve the
         # bare name, so always run the path shutil.which() resolved.
         resolved = [executable, *command[1:]]
-        result = subprocess.run(resolved, cwd=str(cwd), capture_output=True, text=True,
-                                timeout=timeout, shell=False)
+        result = subprocess.run(
+            resolved, cwd=str(cwd), capture_output=True, text=True, timeout=timeout, shell=False
+        )
         output = (result.stdout or result.stderr or "").strip()
-        return {"tool": command[0], "status": "ok" if result.returncode == 0 else "findings",
-                "code": result.returncode, "output": output[:20000]}
+        return {
+            "tool": command[0],
+            "status": "ok" if result.returncode == 0 else "findings",
+            "code": result.returncode,
+            "output": output[:20000],
+        }
     except subprocess.TimeoutExpired:
         return {"tool": command[0], "status": "timeout", "output": "audit timed out"}
     except OSError as exc:
@@ -4975,8 +6410,14 @@ def supply_chain_audit(root: Path) -> dict:
         dirs[:] = [d for d in dirs if d not in SCAN_SKIP_DIRS]
         prune_reparse_dirs(dirpath, dirs)
         for filename in files:
-            if filename not in {"package.json", "package-lock.json", "requirements.txt",
-                                "pyproject.toml", "Cargo.toml", "Cargo.lock"}:
+            if filename not in {
+                "package.json",
+                "package-lock.json",
+                "requirements.txt",
+                "pyproject.toml",
+                "Cargo.toml",
+                "Cargo.lock",
+            }:
                 continue
             path = Path(dirpath) / filename
             try:
@@ -4997,9 +6438,13 @@ def supply_chain_audit(root: Path) -> dict:
         if "Cargo.lock" in names:
             audits.append({"project": project, **_run_audit(["cargo", "audit", "--json"], cwd)})
         if "requirements.txt" in names or "pyproject.toml" in names:
-            audits.append({"project": project, **_run_audit(["pip-audit", "--format", "json"], cwd)})
-    log_security_event("supply-chain-audit", {"root": str(root), "manifests": len(manifests),
-                                              "audits": len(audits)})
+            audits.append(
+                {"project": project, **_run_audit(["pip-audit", "--format", "json"], cwd)}
+            )
+    log_security_event(
+        "supply-chain-audit",
+        {"root": str(root), "manifests": len(manifests), "audits": len(audits)},
+    )
     return {"root": str(root), "sbom": manifests, "audits": audits}
 
 
@@ -5008,18 +6453,33 @@ def _serve_security_overview(req: dict, emit, cancel) -> None:
     purge_expired_quarantine()
     entries = _quarantine_entries()
     logs, valid = read_security_log(limit=int(req.get("limit", 100)))
-    emit({"id": rid, "ev": "done", "ok": True, "payload": {
-        "quarantine": entries, "security_log": logs, "log_valid": valid,
-        "config": load_config(),
-    }})
+    emit(
+        {
+            "id": rid,
+            "ev": "done",
+            "ok": True,
+            "payload": {
+                "quarantine": entries,
+                "security_log": logs,
+                "log_valid": valid,
+                "config": load_config(),
+            },
+        }
+    )
 
 
 def _serve_quarantine_restore(req: dict, emit, cancel) -> None:
     rid = req.get("id")
     entry_id = str(req.get("entry_id", ""))
     error = restore_quarantine(entry_id)
-    emit({"id": rid, "ev": "done", "ok": error is None,
-          "payload": {"error": error or "", "id": entry_id}})
+    emit(
+        {
+            "id": rid,
+            "ev": "done",
+            "ok": error is None,
+            "payload": {"error": error or "", "id": entry_id},
+        }
+    )
 
 
 def _serve_secret_scan(req: dict, emit, cancel) -> None:
@@ -5042,7 +6502,7 @@ def _serve_handle(req: dict, emit, cancels: dict) -> None:
     """Tek bir isteği işle. emit(event_dict) çağrılır."""
     rid = req.get("id")
     op = req.get("op")
-    cancel = _serve_threading.Event()
+    cancel = threading.Event()
     if rid is not None:
         cancels[rid] = cancel
     try:
@@ -5111,8 +6571,7 @@ def _serve_handle(req: dict, emit, cancels: dict) -> None:
         elif op == "supply_audit":
             _serve_supply_audit(req, emit, cancel)
         else:
-            emit({"id": rid, "ev": "error", "code": "unknown_op",
-                  "message": f"unknown op: {op}"})
+            emit({"id": rid, "ev": "error", "code": "unknown_op", "message": f"unknown op: {op}"})
             emit({"id": rid, "ev": "done", "ok": False})
     except Exception as exc:  # bir istek hatası döngüyü düşürmesin
         emit({"id": rid, "ev": "error", "code": "exception", "message": str(exc)})
@@ -5131,7 +6590,7 @@ def cmd_serve() -> None:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except AttributeError:
         pass
-    out_lock = _serve_threading.Lock()
+    out_lock = threading.Lock()
     cancels: dict = {}  # rid -> threading.Event
     workers: list = []
 
@@ -5145,8 +6604,9 @@ def cmd_serve() -> None:
         except json.JSONDecodeError:
             req = None
         if not isinstance(req, dict):  # valid JSON but not an object would crash the loop
-            _serve_emit(out_lock, {"id": None, "ev": "error",
-                                   "code": "bad_json", "message": raw[:200]})
+            _serve_emit(
+                out_lock, {"id": None, "ev": "error", "code": "bad_json", "message": raw[:200]}
+            )
             continue
         rid = req.get("id")
         if req.get("op") == "cancel":
@@ -5154,7 +6614,7 @@ def cmd_serve() -> None:
             if ev:
                 ev.set()
             continue
-        worker = _serve_threading.Thread(
+        worker = threading.Thread(
             target=_serve_handle,
             args=(req, lambda e: _serve_emit(out_lock, e), cancels),
             daemon=True,
@@ -5168,36 +6628,54 @@ def cmd_serve() -> None:
         w.join(timeout=120)
 
 
-def cli_clean(dry_run: bool, json_out: bool, roots: Optional[List[Path]] = None,
-              whitelist: Optional[List[Path]] = None, use_cache: bool = True) -> None:
+def cli_clean(
+    dry_run: bool,
+    json_out: bool,
+    roots: Optional[List[Path]] = None,
+    whitelist: Optional[List[Path]] = None,
+    use_cache: bool = True,
+) -> None:
     """Headless: scan, pick the safe_default categories, ask once, delete."""
     wl = whitelist if whitelist is not None else load_whitelist()
     s = Scanner(whitelist=wl, profile="clean", roots=roots, use_cache=use_cache)
     s.run()
     report = collect_selected_targets(s.categories, estimated=roots is None)
     target_paths = {row["path"] for row in report["targets"]}
-    targets = [it for c in s.categories for it in c.items if it.selected and str(it.path) in target_paths]
+    targets = [
+        it for c in s.categories for it in c.items if it.selected and str(it.path) in target_paths
+    ]
     total = report["total"]
     if json_out:
         report["dry_run"] = dry_run
         report["json_preview_only"] = True
         print(json.dumps(report, indent=2))
         return
-    print(f"{len(targets)} item(s), {human_size(total)} — {'dry-run' if dry_run else 'delete to Recycle Bin'}? [y/N] ", end="")
+    print(
+        f"{len(targets)} item(s), {human_size(total)} — {'dry-run' if dry_run else 'delete to Recycle Bin'}? [y/N] ",
+        end="",
+    )
     if input().strip().lower() != "y":
-        print("Cancelled."); return
+        print("Cancelled.")
+        return
     ok = err = 0
     for t in targets:
         e = delete_path(t.path, use_trash=True, dry_run=dry_run)
-        if e: err += 1
-        else: ok += 1
+        if e:
+            err += 1
+        else:
+            ok += 1
     print(f"Done. {ok} ok, {err} errors.")
 
 
 def cli_categories(categories: List[Category], dry_run: bool, json_out: bool, label: str) -> None:
     report = collect_selected_targets(categories, estimated=False)
     target_paths = {row["path"] for row in report["targets"]}
-    targets = [item for cat in categories for item in cat.items if item.selected and not item.deleted and str(item.path) in target_paths]
+    targets = [
+        item
+        for cat in categories
+        for item in cat.items
+        if item.selected and not item.deleted and str(item.path) in target_paths
+    ]
     total = report["total"]
     if json_out:
         report["mode"] = label
@@ -5213,9 +6691,13 @@ def cli_categories(categories: List[Category], dry_run: bool, json_out: bool, la
         print(f"  {human_size(item.size):>10}  {item.path}")
     if len(targets) > 30:
         print(f"  ... {len(targets) - 30} more")
-    print(f"{'DRY-RUN: preview only' if dry_run else 'Move selected items to Recycle Bin'}? [y/N] ", end="")
+    print(
+        f"{'DRY-RUN: preview only' if dry_run else 'Move selected items to Recycle Bin'}? [y/N] ",
+        end="",
+    )
     if input().strip().lower() != "y":
-        print("Cancelled."); return
+        print("Cancelled.")
+        return
     ok = err = 0
     for item in targets:
         e = delete_path(item.path, use_trash=True, dry_run=dry_run)
@@ -5240,7 +6722,19 @@ def cli_analyze(path: Path, json_out: bool) -> None:
 
 
 def normalize_app_tokens(*parts: str) -> List[str]:
-    stop = {"inc", "llc", "ltd", "corp", "corporation", "company", "gmbh", "x64", "x86", "64bit", "32bit"}
+    stop = {
+        "inc",
+        "llc",
+        "ltd",
+        "corp",
+        "corporation",
+        "company",
+        "gmbh",
+        "x64",
+        "x86",
+        "64bit",
+        "32bit",
+    }
     tokens: List[str] = []
     for part in parts:
         cleaned = "".join(ch.lower() if ch.isalnum() else " " for ch in part)
@@ -5265,8 +6759,10 @@ def is_leftover_match(path: Path, tokens: List[str]) -> bool:
             return True
         # Prefix matches only when BOTH sides are long enough; this prevents
         # short tokens (git, vlc, obs) from matching unrelated folders.
-        if len(token) >= 5 and len(compact_name) >= 5 and (
-            compact_name.startswith(token) or token.startswith(compact_name)
+        if (
+            len(token) >= 5
+            and len(compact_name) >= 5
+            and (compact_name.startswith(token) or token.startswith(compact_name))
         ):
             return True
     return False
@@ -5279,7 +6775,11 @@ def default_leftover_roots() -> List[Path]:
         Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")),
         USER / "Desktop",
         APPDATA / "Microsoft" / "Windows" / "Start Menu" / "Programs",
-        Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Microsoft" / "Windows" / "Start Menu" / "Programs",
+        Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
+        / "Microsoft"
+        / "Windows"
+        / "Start Menu"
+        / "Programs",
     ]
 
 
@@ -5287,7 +6787,9 @@ def filter_apps(apps: List[dict], query: str = "", limit: Optional[int] = None) 
     q = query.strip().lower()
     out = []
     for app in apps:
-        haystack = " ".join(str(app.get(k) or "") for k in ("name", "publisher", "version", "install_location")).lower()
+        haystack = " ".join(
+            str(app.get(k) or "") for k in ("name", "publisher", "version", "install_location")
+        ).lower()
         if q and q not in haystack:
             continue
         out.append(app)
@@ -5330,7 +6832,8 @@ def find_leftover_candidates(app: dict, roots: Optional[List[Path]] = None) -> L
     shared_vendor = publisher and any(
         (row.get("publisher") or "").strip().lower() == publisher.lower()
         and row.get("name") != app.get("name")
-        for row in list_installed_apps())
+        for row in list_installed_apps()
+    )
     tokens = normalize_app_tokens(name) if shared_vendor else normalize_app_tokens(name, publisher)
     roots = roots or default_leftover_roots()
     out: List[Item] = []
@@ -5352,17 +6855,25 @@ def find_leftover_candidates(app: dict, roots: Optional[List[Path]] = None) -> L
     return out
 
 
-def cli_uninstall(json_out: bool, query: str = "", limit: Optional[int] = None, include_leftovers: bool = False) -> None:
+def cli_uninstall(
+    json_out: bool, query: str = "", limit: Optional[int] = None, include_leftovers: bool = False
+) -> None:
     apps = list_installed_apps()
     apps = filter_apps(apps, query=query, limit=limit)
     if json_out:
         payload = {"apps": apps, "query": query, "limit": limit}
         if include_leftovers:
-            payload["leftovers"] = [{
-                "app": a.get("name"),
-                "files": [{"path": str(i.path), "size": i.size} for i in find_leftover_candidates(a)[:30]],
-                "registry_keys": find_registry_leftover_candidates(a),
-            } for a in apps]
+            payload["leftovers"] = [
+                {
+                    "app": a.get("name"),
+                    "files": [
+                        {"path": str(i.path), "size": i.size}
+                        for i in find_leftover_candidates(a)[:30]
+                    ],
+                    "registry_keys": find_registry_leftover_candidates(a),
+                }
+                for a in apps
+            ]
         print(json.dumps(payload, indent=2))
         return
     if not apps:
@@ -5377,12 +6888,13 @@ def cli_uninstall(json_out: bool, query: str = "", limit: Optional[int] = None, 
 
 def cli_status() -> None:
     if psutil is None:
-        print("psutil not installed."); return
+        print("psutil not installed.")
+        return
     print(f"Health: {health_score()}/100")
     print(f"CPU: {psutil.cpu_percent(interval=0.3)}%")
     vm = psutil.virtual_memory()
     print(f"Memory: {vm.percent}% ({human_size(vm.used)}/{human_size(vm.total)})")
-    du = psutil.disk_usage(USER.anchor or 'C:\\')
+    du = psutil.disk_usage(USER.anchor or "C:\\")
     print(f"Disk: {du.percent}% ({human_size(du.free)} free)")
 
 
@@ -5393,8 +6905,14 @@ def cli_optimize(dry_run: bool, json_out: bool, yes: bool = False) -> None:
             if json_out:
                 # Non-interactive: never run destructive actions without --yes.
                 if not yes:
-                    rows.append({"title": action.title, "result": "skipped: high-risk requires --yes",
-                                 "risk": action.risk, "admin": action.requires_admin})
+                    rows.append(
+                        {
+                            "title": action.title,
+                            "result": "skipped: high-risk requires --yes",
+                            "risk": action.risk,
+                            "admin": action.requires_admin,
+                        }
+                    )
                     continue
             elif not yes:
                 print(f"High risk action '{action.title}'. Continue? [y/N] ", end="")
@@ -5402,7 +6920,15 @@ def cli_optimize(dry_run: bool, json_out: bool, yes: bool = False) -> None:
                     rows.append({"title": action.title, "result": "cancelled"})
                     continue
         ok, opt_msg = run_optimize(action, dry_run=dry_run)
-        rows.append({"title": action.title, "ok": ok, "result": opt_msg, "risk": action.risk, "admin": action.requires_admin})
+        rows.append(
+            {
+                "title": action.title,
+                "ok": ok,
+                "result": opt_msg,
+                "risk": action.risk,
+                "admin": action.requires_admin,
+            }
+        )
     if json_out:
         print(json.dumps({"dry_run": dry_run, "results": rows}, indent=2))
     else:
@@ -5428,11 +6954,15 @@ def fetch_latest_release(repo: str = GITHUB_REPO, timeout: float = 10.0) -> Opti
     """Return parsed GitHub latest-release JSON or None on failure."""
     import urllib.request
     import urllib.error
+
     url = f"https://api.github.com/repos/{repo}/releases/latest"
-    req = urllib.request.Request(url, headers={
-        "Accept": "application/vnd.github+json",
-        "User-Agent": f"wmole/{__version__}",
-    })
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"wmole/{__version__}",
+        },
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
@@ -5502,7 +7032,7 @@ def _create_swap_batch(new_exe: Path, current_exe: Path) -> Path:
         "@echo off\r\n"
         "setlocal enabledelayedexpansion\r\n"
         "title wmole update\r\n"
-        'echo [wmole] Updating...\r\n'
+        "echo [wmole] Updating...\r\n"
         "\r\n"
         "rem Wait up to 15 seconds for the old process to release the file\r\n"
         "set /a attempts=0\r\n"
@@ -5515,15 +7045,15 @@ def _create_swap_batch(new_exe: Path, current_exe: Path) -> Path:
         "   goto waitloop\r\n"
         "\r\n"
         ":launch\r\n"
-        f'   echo [wmole] Updated to {__version__}. Starting...\r\n'
+        f"   echo [wmole] Updated to {__version__}. Starting...\r\n"
         f'   start "" "{current_exe}"\r\n'
-        "   del \"%~f0\" & exit /b 0\r\n"
+        '   del "%~f0" & exit /b 0\r\n'
         "\r\n"
         ":fail\r\n"
-        '   echo [wmole] Update failed: could not replace old exe (file locked).\r\n'
-        f'   echo [wmole] New version is at: {new_exe}\r\n'
+        "   echo [wmole] Update failed: could not replace old exe (file locked).\r\n"
+        f"   echo [wmole] New version is at: {new_exe}\r\n"
         "   timeout /t 5 >nul\r\n"
-        "   del \"%~f0\" & exit /b 1\r\n"
+        '   del "%~f0" & exit /b 1\r\n'
         "endlocal\r\n"
     )
     batch.write_text(bat_content, encoding="ascii")
@@ -5539,8 +7069,9 @@ def _launch_updated(new_path: Path, asset_name: str, latest_tag: str) -> None:
     is_installer = _is_installer_asset(asset_name)
     DETACHED = 0x00000008  # DETACHED_PROCESS
 
-    log_operation("auto_update", new_path, new_path.stat().st_size,
-                  f"{__version__} -> {latest_tag}")
+    log_operation(
+        "auto_update", new_path, new_path.stat().st_size, f"{__version__} -> {latest_tag}"
+    )
 
     if is_installer:
         subprocess.Popen(
@@ -5592,6 +7123,7 @@ def _download(url: str, dest: Path, on_progress=None, sha256: str = "") -> None:
     and ValueError raised: an update is executed, so it is never trusted on
     size alone."""
     import urllib.request
+
     req = urllib.request.Request(url, headers={"User-Agent": f"wmole/{__version__}"})
     digest = hashlib.sha256()
     with urllib.request.urlopen(req, timeout=30) as resp, open(dest, "wb") as fh:
@@ -5611,8 +7143,13 @@ def _download(url: str, dest: Path, on_progress=None, sha256: str = "") -> None:
         raise ValueError("checksum mismatch")
 
 
-def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
-               quiet: bool = False, sink: Optional[dict] = None) -> str:
+def cli_update(
+    json_out: bool,
+    yes: bool = False,
+    dry_run: bool = False,
+    quiet: bool = False,
+    sink: Optional[dict] = None,
+) -> str:
     """Self-update.
 
     - Frozen exe (PyInstaller install): check GitHub latest release, download
@@ -5627,50 +7164,77 @@ def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
     if is_frozen:
         rel = fetch_latest_release()
         if not rel:
-            steps.append({"step": "fetch-release", "code": 1,
-                          "output": "could not reach GitHub API"})
+            steps.append(
+                {"step": "fetch-release", "code": 1, "output": "could not reach GitHub API"}
+            )
             return _emit_update(steps, json_out, quiet, sink)
         latest_tag = rel.get("tag_name", "")
         latest_ver = _parse_semver(latest_tag)
         current_ver = _parse_semver(__version__)
-        steps.append({"step": "check-version", "code": 0,
-                      "output": f"installed {__version__}, latest {latest_tag}"})
+        steps.append(
+            {
+                "step": "check-version",
+                "code": 0,
+                "output": f"installed {__version__}, latest {latest_tag}",
+            }
+        )
         if latest_ver <= current_ver:
-            steps.append({"step": "decision", "code": 0,
-                          "output": "already up to date"})
+            steps.append({"step": "decision", "code": 0, "output": "already up to date"})
             return _emit_update(steps, json_out, quiet, sink)
 
         if quiet:
-            steps.append({"step": "decision", "code": 0,
-                          "output": f"update available: {latest_tag}; restart wmole to install automatically"})
+            steps.append(
+                {
+                    "step": "decision",
+                    "code": 0,
+                    "output": f"update available: {latest_tag}; restart wmole to install automatically",
+                }
+            )
             return _emit_update(steps, json_out, quiet, sink)
 
         asset = _pick_update_asset(rel.get("assets", []))
         if not asset:
-            steps.append({"step": "asset", "code": 1,
-                          "output": "no installer asset found in release"})
+            steps.append(
+                {"step": "asset", "code": 1, "output": "no installer asset found in release"}
+            )
             return _emit_update(steps, json_out, quiet, sink)
         url = asset["browser_download_url"]
         name = Path(asset["name"]).name  # strip any path components from the API value
         expected_size = int(asset.get("size") or 0)
         expected_sha = _asset_sha256(asset)
         if not expected_sha:
-            steps.append({"step": "asset", "code": 1,
-                          "output": f"{name}: release publishes no SHA-256, refusing to install"})
+            steps.append(
+                {
+                    "step": "asset",
+                    "code": 1,
+                    "output": f"{name}: release publishes no SHA-256, refusing to install",
+                }
+            )
             return _emit_update(steps, json_out, quiet, sink)
         steps.append({"step": "asset", "code": 0, "output": name})
 
         if dry_run:
-            steps.append({"step": "download", "code": 0,
-                          "output": f"would download {url}"})
-            steps.append({"step": "install", "code": 0,
-                          "output": ("would run the installer silently" if _is_installer_asset(name)
-                                     else "would replace the running exe")})
+            steps.append({"step": "download", "code": 0, "output": f"would download {url}"})
+            steps.append(
+                {
+                    "step": "install",
+                    "code": 0,
+                    "output": (
+                        "would run the installer silently"
+                        if _is_installer_asset(name)
+                        else "would replace the running exe"
+                    ),
+                }
+            )
             return _emit_update(steps, json_out, quiet, sink)
 
         if not yes and not json_out:
             try:
-                ans = input(f"Upgrade wmole {__version__} -> {latest_tag} now? [y/N] ").strip().lower()
+                ans = (
+                    input(f"Upgrade wmole {__version__} -> {latest_tag} now? [y/N] ")
+                    .strip()
+                    .lower()
+                )
             except EOFError:
                 ans = ""
             if ans not in ("y", "yes"):
@@ -5680,20 +7244,23 @@ def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
         dest = TEMP / name
         try:
             last_pct = [-1]
+
             def _prog(read, total):
                 pct = int(read * 100 / total)
                 if pct != last_pct[0] and not json_out:
                     last_pct[0] = pct
                     sys.stdout.write(f"\rdownloading {name}: {pct:3d}%")
                     sys.stdout.flush()
+
             _download(url, dest, on_progress=_prog, sha256=expected_sha)
             if not json_out:
                 sys.stdout.write("\n")
             if expected_size > 0 and dest.stat().st_size != expected_size:
                 steps.append({"step": "download", "code": 1, "output": "size mismatch"})
                 return _emit_update(steps, json_out, quiet, sink)
-            steps.append({"step": "download", "code": 0,
-                          "output": f"{dest} ({dest.stat().st_size} bytes)"})
+            steps.append(
+                {"step": "download", "code": 0, "output": f"{dest} ({dest.stat().st_size} bytes)"}
+            )
         except Exception as exc:
             steps.append({"step": "download", "code": 1, "output": str(exc)})
             return _emit_update(steps, json_out, quiet, sink)
@@ -5701,8 +7268,9 @@ def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
         # Same launch path as the background updater: silent installer, or a
         # swap batch for a raw exe. It exits this process so the exe can be replaced.
         try:
-            steps.append({"step": "install", "code": 0,
-                          "output": "update launched in background; exiting"})
+            steps.append(
+                {"step": "install", "code": 0, "output": "update launched in background; exiting"}
+            )
             _emit_update(steps, json_out, quiet, sink)
             _launch_updated(dest, name, latest_tag)
         except Exception as exc:
@@ -5711,12 +7279,27 @@ def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
 
     # Source checkout path (legacy)
     if path_exists(Path(".git")):
-        r = subprocess.run(["git", "pull", "--ff-only"], capture_output=True, text=True, shell=False)
-        steps.append({"step": "git-pull", "code": r.returncode, "output": (r.stdout or r.stderr).strip()})
+        r = subprocess.run(
+            ["git", "pull", "--ff-only"], capture_output=True, text=True, shell=False
+        )
+        steps.append(
+            {"step": "git-pull", "code": r.returncode, "output": (r.stdout or r.stderr).strip()}
+        )
     else:
         steps.append({"step": "git-pull", "code": 1, "output": "not a git repository"})
-    r2 = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "rich", "send2trash", "psutil"], capture_output=True, text=True, shell=False)
-    steps.append({"step": "pip-upgrade-deps", "code": r2.returncode, "output": (r2.stdout or r2.stderr).strip()[-500:]})
+    r2 = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "rich", "send2trash", "psutil"],
+        capture_output=True,
+        text=True,
+        shell=False,
+    )
+    steps.append(
+        {
+            "step": "pip-upgrade-deps",
+            "code": r2.returncode,
+            "output": (r2.stdout or r2.stderr).strip()[-500:],
+        }
+    )
     return _emit_update(steps, json_out, quiet, sink)
 
 
@@ -5781,8 +7364,11 @@ def _auto_update_worker() -> None:
             try:
                 cur = json.loads(PENDING_UPDATE_FILE.read_text(encoding="utf-8"))
                 cur_path = Path(cur.get("path", ""))
-                if (cur.get("version") == latest_tag and cur_path.exists()
-                        and (expected_size == 0 or cur_path.stat().st_size == expected_size)):
+                if (
+                    cur.get("version") == latest_tag
+                    and cur_path.exists()
+                    and (expected_size == 0 or cur_path.stat().st_size == expected_size)
+                ):
                     return
             except Exception:
                 pass
@@ -5794,14 +7380,19 @@ def _auto_update_worker() -> None:
                 return
 
         try:
-            PENDING_UPDATE_FILE.write_text(json.dumps({
-                "version": latest_tag,
-                "name": asset["name"],
-                "path": str(dest),
-                "sha256": expected_sha,
-                "downloaded_at": time.time(),
-                "from_version": __version__,
-            }), encoding="utf-8")
+            PENDING_UPDATE_FILE.write_text(
+                json.dumps(
+                    {
+                        "version": latest_tag,
+                        "name": asset["name"],
+                        "path": str(dest),
+                        "sha256": expected_sha,
+                        "downloaded_at": time.time(),
+                        "from_version": __version__,
+                    }
+                ),
+                encoding="utf-8",
+            )
             try:
                 WMOLE_DIR.mkdir(parents=True, exist_ok=True)
                 UPDATE_CHECK_FILE.write_text(json.dumps({"ts": time.time()}), encoding="utf-8")
@@ -5864,8 +7455,9 @@ def apply_pending_update() -> bool:
         return False
 
 
-def _emit_update(steps: List[dict], json_out: bool, quiet: bool = False,
-                 sink: Optional[dict] = None) -> str:
+def _emit_update(
+    steps: List[dict], json_out: bool, quiet: bool = False, sink: Optional[dict] = None
+) -> str:
     # Yapılandırılmış sonucu doğrudan çağırana ver (stdout'a dokunmadan).
     # Sidecar bunu kullanır; böylece eşzamanlı işlemlerin stdout'una karışmaz.
     if sink is not None:
@@ -5901,12 +7493,25 @@ def cli_remove(dry_run: bool, json_out: bool, sink: Optional[dict] = None) -> No
 # ---------- Developer ports (listening localhost sockets) ----------
 # Common dev-server defaults; used to flag entries as "well-known dev port".
 DEV_PORT_HINTS: Dict[int, str] = {
-    3000: "Node/React", 3001: "Node alt", 4000: "Phoenix/Gatsby",
-    4200: "Angular", 5000: "Flask/.NET", 5173: "Vite", 5174: "Vite alt",
-    5500: "Live Server", 8000: "Django/Python http", 8080: "Generic web",
-    8081: "Webpack/Metro", 8888: "Jupyter", 9000: "PHP-FPM/SonarQube",
-    9229: "Node debug", 27017: "MongoDB", 5432: "Postgres", 3306: "MySQL",
-    6379: "Redis", 11434: "Ollama",
+    3000: "Node/React",
+    3001: "Node alt",
+    4000: "Phoenix/Gatsby",
+    4200: "Angular",
+    5000: "Flask/.NET",
+    5173: "Vite",
+    5174: "Vite alt",
+    5500: "Live Server",
+    8000: "Django/Python http",
+    8080: "Generic web",
+    8081: "Webpack/Metro",
+    8888: "Jupyter",
+    9000: "PHP-FPM/SonarQube",
+    9229: "Node debug",
+    27017: "MongoDB",
+    5432: "Postgres",
+    3306: "MySQL",
+    6379: "Redis",
+    11434: "Ollama",
 }
 
 _LOCAL_IPS = {"127.0.0.1", "0.0.0.0", "::1", "::", ""}
@@ -5992,9 +7597,19 @@ def list_dev_ports(include_all: bool = False) -> List[dict]:
 
 # Killing any of these takes the session or the whole machine down (BSOD).
 CRITICAL_PROCESSES = {
-    "system", "system idle process", "registry", "memory compression",
-    "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe", "services.exe",
-    "lsass.exe", "svchost.exe", "dwm.exe", "fontdrvhost.exe",
+    "system",
+    "system idle process",
+    "registry",
+    "memory compression",
+    "smss.exe",
+    "csrss.exe",
+    "wininit.exe",
+    "winlogon.exe",
+    "services.exe",
+    "lsass.exe",
+    "svchost.exe",
+    "dwm.exe",
+    "fontdrvhost.exe",
 }
 
 
@@ -6017,7 +7632,10 @@ def process_protection_reason(pid: int) -> str:
             if repo:
                 result = subprocess.run(
                     ["git", "-C", str(repo), "status", "--porcelain"],
-                    capture_output=True, text=True, timeout=10, shell=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    shell=False,
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     return f"process works in a repository with unsaved changes: {repo}"
@@ -6059,8 +7677,9 @@ def kill_pid(pid: int, dry_run: bool = False, force: bool = True) -> tuple:
         return (False, f"failed pid {pid}: {exc}")
 
 
-def cli_ports(json_out: bool, kill_target: str = "", dry_run: bool = False,
-              include_all: bool = False) -> None:
+def cli_ports(
+    json_out: bool, kill_target: str = "", dry_run: bool = False, include_all: bool = False
+) -> None:
     """List listening dev ports, or kill by port/PID/'all'."""
     rows = list_dev_ports(include_all=include_all)
 
@@ -6078,11 +7697,13 @@ def cli_ports(json_out: bool, kill_target: str = "", dry_run: bool = False,
             n = int(target)
             # Bare number is ambiguous: prefer port, fall back to PID.
             # Use 'port:N' or 'pid:N' to be explicit.
-            victims = [r for r in rows if r["port"] == n] or \
-                      [r for r in rows if r["pid"] == n]
+            victims = [r for r in rows if r["port"] == n] or [r for r in rows if r["pid"] == n]
         else:
-            print(json.dumps({"error": f"invalid --kill target: {kill_target}"}, indent=2)
-                  if json_out else f"invalid --kill target: {kill_target} (use <port>, port:N, pid:N, or all)")
+            print(
+                json.dumps({"error": f"invalid --kill target: {kill_target}"}, indent=2)
+                if json_out
+                else f"invalid --kill target: {kill_target} (use <port>, port:N, pid:N, or all)"
+            )
             return
         results = []
         seen_pids = set()
@@ -6091,8 +7712,7 @@ def cli_ports(json_out: bool, kill_target: str = "", dry_run: bool = False,
                 continue
             seen_pids.add(r["pid"])
             k_ok, msg = kill_pid(r["pid"], dry_run=dry_run)
-            log_operation("port_kill", Path(f"pid:{r['pid']}:{r['proto']}:{r['port']}"),
-                          0, msg)
+            log_operation("port_kill", Path(f"pid:{r['pid']}:{r['proto']}:{r['port']}"), 0, msg)
             results.append({**r, "ok": k_ok, "result": msg})
         if json_out:
             print(json.dumps({"killed": results, "dry_run": dry_run}, indent=2))
@@ -6101,8 +7721,10 @@ def cli_ports(json_out: bool, kill_target: str = "", dry_run: bool = False,
                 print("no matching listening ports.")
                 return
             for r in results:
-                print(f"{r['proto']}/{r['port']:>5}  pid {r['pid']:>6}  "
-                      f"{r['process'] or '-':<20}  {r['result']}")
+                print(
+                    f"{r['proto']}/{r['port']:>5}  pid {r['pid']:>6}  "
+                    f"{r['process'] or '-':<20}  {r['result']}"
+                )
         return
 
     if json_out:
@@ -6112,12 +7734,16 @@ def cli_ports(json_out: bool, kill_target: str = "", dry_run: bool = False,
     if not rows:
         print("no listening localhost ports detected (run as admin to see all).")
         return
-    print(f"{'PROTO':<5} {'PORT':>6}  {'PID':>6}  {'PROCESS':<22} {'PROJECT':<20} {'BIND':<16} HINT")
+    print(
+        f"{'PROTO':<5} {'PORT':>6}  {'PID':>6}  {'PROCESS':<22} {'PROJECT':<20} {'BIND':<16} HINT"
+    )
     print("-" * 98)
     for r in rows:
-        print(f"{r['proto']:<5} {r['port']:>6}  {str(r['pid'] or '-'):>6}  "
-              f"{(r['process'] or '-')[:22]:<22} {(r.get('project') or '-')[:20]:<20} "
-              f"{r['ip']:<16} {r['hint']}")
+        print(
+            f"{r['proto']:<5} {r['port']:>6}  {str(r['pid'] or '-'):>6}  "
+            f"{(r['process'] or '-')[:22]:<22} {(r.get('project') or '-')[:20]:<20} "
+            f"{r['ip']:<16} {r['hint']}"
+        )
     print()
     print("Kill: wmole ports --kill <port|port:N|pid:N|all>   (add --dry-run to preview)")
 
@@ -6149,12 +7775,20 @@ def _doctor_path_entries() -> List[dict]:
         except OSError:
             missing.append(entry)
     rows = [_doctor_row("PATH entries", "ok", f"{len(entries)} entry(s)")]
-    rows.append(_doctor_row(
-        "PATH duplicates", "warn" if duplicates else "ok",
-        ", ".join(duplicates[:5]) if duplicates else "no duplicates"))
-    rows.append(_doctor_row(
-        "PATH missing", "warn" if missing else "ok",
-        ", ".join(missing[:5]) if missing else "all entries exist"))
+    rows.append(
+        _doctor_row(
+            "PATH duplicates",
+            "warn" if duplicates else "ok",
+            ", ".join(duplicates[:5]) if duplicates else "no duplicates",
+        )
+    )
+    rows.append(
+        _doctor_row(
+            "PATH missing",
+            "warn" if missing else "ok",
+            ", ".join(missing[:5]) if missing else "all entries exist",
+        )
+    )
     return rows
 
 
@@ -6163,8 +7797,9 @@ def _tool_version(name: str, timeout: int = 8) -> dict:
     if not executable:
         return _doctor_row(name, "unavailable", "not found on PATH")
     try:
-        result = subprocess.run([executable, "--version"], capture_output=True, text=True,
-                                timeout=timeout, shell=False)
+        result = subprocess.run(
+            [executable, "--version"], capture_output=True, text=True, timeout=timeout, shell=False
+        )
     except (subprocess.SubprocessError, OSError) as exc:
         return _doctor_row(name, "fail", f"version check failed: {exc}")
     output = (result.stdout or result.stderr or "").strip().splitlines()
@@ -6208,8 +7843,11 @@ def _doctor_disk() -> dict:
         status = "warn"
     else:
         status = "ok"
-    return _doctor_row("system disk", status,
-                       f"{human_size(usage.free)} free of {human_size(usage.total)} on {root}")
+    return _doctor_row(
+        "system disk",
+        status,
+        f"{human_size(usage.free)} free of {human_size(usage.total)} on {root}",
+    )
 
 
 def _doctor_wmole_state() -> List[dict]:
@@ -6238,8 +7876,7 @@ def _doctor_wmole_state() -> List[dict]:
     except OSError:
         size = 0
     status = "warn" if size >= 1024**3 else "ok"
-    rows.append(_doctor_row("quarantine", status,
-                            f"{len(entries)} entry(s), {human_size(size)}"))
+    rows.append(_doctor_row("quarantine", status, f"{len(entries)} entry(s), {human_size(size)}"))
     return rows
 
 
@@ -6255,8 +7892,7 @@ def doctor_report() -> dict:
     summary = {"ok": 0, "warn": 0, "fail": 0, "unavailable": 0}
     for row in checks:
         summary[row["status"]] = summary.get(row["status"], 0) + 1
-    return {"checks": checks, "summary": summary,
-            "healthy": summary.get("fail", 0) == 0}
+    return {"checks": checks, "summary": summary, "healthy": summary.get("fail", 0) == 0}
 
 
 DOCTOR_STATUS_STYLE = {"ok": "green", "warn": "yellow", "fail": "red", "unavailable": "grey50"}
@@ -6272,33 +7908,44 @@ def cli_doctor(json_out: bool = False) -> None:
     for row in report["checks"]:
         style = DOCTOR_STATUS_STYLE.get(row["status"], "white")
         icon = DOCTOR_STATUS_ICON.get(row["status"], "?")
-        console.print(f"  [{style}]{icon}[/{style}] {row['check']:<26} "
-                      f"[{style}]{row['status']:<12}[/{style}] {row['detail']}")
+        console.print(
+            f"  [{style}]{icon}[/{style}] {row['check']:<26} "
+            f"[{style}]{row['status']:<12}[/{style}] {row['detail']}"
+        )
     s = report["summary"]
-    console.print(f"\n  ok={s.get('ok', 0)}  warn={s.get('warn', 0)}  "
-                  f"fail={s.get('fail', 0)}  unavailable={s.get('unavailable', 0)}")
+    console.print(
+        f"\n  ok={s.get('ok', 0)}  warn={s.get('warn', 0)}  "
+        f"fail={s.get('fail', 0)}  unavailable={s.get('unavailable', 0)}"
+    )
 
 
 def undo_entries(limit: int = 20) -> List[dict]:
     """Most recent quarantine entries, newest first."""
-    entries = sorted(_quarantine_entries(), key=lambda row: int(row.get("created", 0)),
-                     reverse=True)
+    entries = sorted(
+        _quarantine_entries(), key=lambda row: int(row.get("created", 0)), reverse=True
+    )
     rows = []
     for entry in entries[:limit]:
         created = int(entry.get("created", 0))
-        rows.append({
-            "id": entry.get("id", ""),
-            "path": entry.get("original", ""),
-            "name": entry.get("name", ""),
-            "size": int(entry.get("size", 0) or 0),
-            "created": created,
-            "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(created)) if created else "",
-        })
+        rows.append(
+            {
+                "id": entry.get("id", ""),
+                "path": entry.get("original", ""),
+                "name": entry.get("name", ""),
+                "size": int(entry.get("size", 0) or 0),
+                "created": created,
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(created))
+                if created
+                else "",
+            }
+        )
     return rows
 
 
-RECYCLE_BIN_HINT = ("Items deleted straight to the Recycle Bin are not tracked here - "
-                    "restore those from the Windows Recycle Bin.")
+RECYCLE_BIN_HINT = (
+    "Items deleted straight to the Recycle Bin are not tracked here - "
+    "restore those from the Windows Recycle Bin."
+)
 
 
 def cli_undo(entry_id: str = "", json_out: bool = False, limit: int = 20) -> None:
@@ -6316,8 +7963,7 @@ def cli_undo(entry_id: str = "", json_out: bool = False, limit: int = 20) -> Non
         return
     rows = undo_entries(limit=limit)
     if json_out:
-        print(json.dumps({"entries": rows, "count": len(rows),
-                          "hint": RECYCLE_BIN_HINT}, indent=2))
+        print(json.dumps({"entries": rows, "count": len(rows), "hint": RECYCLE_BIN_HINT}, indent=2))
         return
     if not rows:
         console.print("no quarantined items to undo.")
@@ -6325,8 +7971,9 @@ def cli_undo(entry_id: str = "", json_out: bool = False, limit: int = 20) -> Non
         return
     console.print(f"{'ID':<24} {'WHEN':<20} {'SIZE':>10}  PATH")
     for row in rows:
-        console.print(f"{row['id']:<24} {row['created_at']:<20} "
-                      f"{human_size(row['size']):>10}  {row['path']}")
+        console.print(
+            f"{row['id']:<24} {row['created_at']:<20} {human_size(row['size']):>10}  {row['path']}"
+        )
     console.print("\nRestore: wmole undo <id>")
     console.print(f"[grey50]{RECYCLE_BIN_HINT}[/grey50]")
 
@@ -6369,9 +8016,14 @@ def _staged_files(root: Path) -> List[Path]:
     if not git:
         return []
     try:
-        result = subprocess.run([git, "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                                cwd=str(root), capture_output=True, text=True,
-                                timeout=30, shell=False)
+        result = subprocess.run(
+            [git, "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            shell=False,
+        )
     except (subprocess.SubprocessError, OSError) as exc:
         _debug_log(f"hook: staged file listing failed: {exc}")
         return []
@@ -6405,8 +8057,15 @@ def scan_staged_secrets(root: Path) -> dict:
                 if match:
                     value = match.group(0)
                     preview = value[:4] + "..." if len(value) > 10 else "[redacted]"
-                    findings.append({"type": kind, "path": str(path), "line": line_no,
-                                     "preview": preview, "severity": "high"})
+                    findings.append(
+                        {
+                            "type": kind,
+                            "path": str(path),
+                            "line": line_no,
+                            "preview": preview,
+                            "severity": "high",
+                        }
+                    )
                     break
     return {"root": str(root), "scanned": len(files), "findings": findings}
 
@@ -6423,8 +8082,11 @@ def install_pre_commit_hook(root: Path, force: bool = False) -> dict:
         except OSError as exc:
             return {"ok": False, "path": str(target), "error": f"unreadable hook: {exc}"}
         if HOOK_SIGNATURE not in existing and not force:
-            return {"ok": False, "path": str(target),
-                    "error": "a pre-commit hook already exists; re-run with --force to replace it"}
+            return {
+                "ok": False,
+                "path": str(target),
+                "error": "a pre-commit hook already exists; re-run with --force to replace it",
+            }
     body = HOOK_TEMPLATE.format(signature=HOOK_SIGNATURE, command=_hook_command())
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -6445,8 +8107,11 @@ def uninstall_pre_commit_hook(root: Path) -> dict:
     except OSError as exc:
         return {"ok": False, "path": str(target), "error": f"unreadable hook: {exc}"}
     if HOOK_SIGNATURE not in existing:
-        return {"ok": False, "path": str(target),
-                "error": "pre-commit hook was not installed by wmole; left untouched"}
+        return {
+            "ok": False,
+            "path": str(target),
+            "error": "pre-commit hook was not installed by wmole; left untouched",
+        }
     try:
         target.unlink()
     except OSError as exc:
@@ -6455,8 +8120,9 @@ def uninstall_pre_commit_hook(root: Path) -> dict:
     return {"ok": True, "path": str(target), "action": "removed"}
 
 
-def cli_hook(action: str, json_out: bool = False, force: bool = False,
-             cwd: Optional[Path] = None) -> int:
+def cli_hook(
+    action: str, json_out: bool = False, force: bool = False, cwd: Optional[Path] = None
+) -> int:
     """`wmole hook install|uninstall|--run` for the git repo at `cwd`."""
     base = cwd or Path.cwd()
     root = git_repo_root(base)
@@ -6509,35 +8175,88 @@ def cli_completion(shell: str, install: bool, json_out: bool) -> None:
         WMOLE_DIR.mkdir(parents=True, exist_ok=True)
         COMPLETION_FILE.write_text(script + "\n", encoding="utf-8")
     if json_out:
-        print(json.dumps({"shell": shell, "installed": install, "path": str(COMPLETION_FILE), "script": script}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "shell": shell,
+                    "installed": install,
+                    "path": str(COMPLETION_FILE),
+                    "script": script,
+                },
+                indent=2,
+            )
+        )
     else:
         print(script)
 
 
 def main_cli() -> None:
     p = argparse.ArgumentParser(
-        prog="wmole", description="Windows port of mole",
-        epilog="Product Owner: Umut Çelik - https://x.com/umutc6230 - https://github.com/umutc6230")
-    p.add_argument("mode", nargs="?", default="analyze",
-                   choices=["analyze", "clean", "purge", "status", "optimize", "uninstall", "installer", "installers", "update", "remove", "completion", "ports", "doctor", "undo", "hook", "serve"])
+        prog="wmole",
+        description="Windows port of mole",
+        epilog="Product Owner: Umut Çelik - https://x.com/umutc6230 - https://github.com/umutc6230",
+    )
+    p.add_argument(
+        "mode",
+        nargs="?",
+        default="analyze",
+        choices=[
+            "analyze",
+            "clean",
+            "purge",
+            "status",
+            "optimize",
+            "uninstall",
+            "installer",
+            "installers",
+            "update",
+            "remove",
+            "completion",
+            "ports",
+            "doctor",
+            "undo",
+            "hook",
+            "serve",
+        ],
+    )
     p.add_argument("targets", nargs="*", help="optional paths for analyze/purge/installers")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--json", action="store_true", dest="json_out")
     p.add_argument("--query", default="", help="filter uninstall entries")
     p.add_argument("--limit", type=int, default=None, help="limit uninstall JSON/list output")
-    p.add_argument("--leftovers", action="store_true", help="include leftover candidates in uninstall JSON")
+    p.add_argument(
+        "--leftovers", action="store_true", help="include leftover candidates in uninstall JSON"
+    )
     p.add_argument("--paths", default="", help="semicolon/comma separated paths override")
     p.add_argument("--whitelist", default=str(WHITELIST_FILE), help="whitelist file path")
     p.add_argument("--shell", default="powershell", help="completion shell")
-    p.add_argument("--install", action="store_true", help="install completion script under ~/.wmole")
-    p.add_argument("--yes", "-y", action="store_true", help="auto-confirm prompts (e.g. self-update)")
-    p.add_argument("--disable-auto", action="store_true", help="update mode: turn off background auto-update")
-    p.add_argument("--enable-auto", action="store_true", help="update mode: turn background auto-update back on")
+    p.add_argument(
+        "--install", action="store_true", help="install completion script under ~/.wmole"
+    )
+    p.add_argument(
+        "--yes", "-y", action="store_true", help="auto-confirm prompts (e.g. self-update)"
+    )
+    p.add_argument(
+        "--disable-auto", action="store_true", help="update mode: turn off background auto-update"
+    )
+    p.add_argument(
+        "--enable-auto",
+        action="store_true",
+        help="update mode: turn background auto-update back on",
+    )
     p.add_argument("--kill", default="", help="ports mode: <port>, <pid>, or 'all'")
-    p.add_argument("--all-binds", action="store_true", help="ports mode: include non-localhost listeners")
+    p.add_argument(
+        "--all-binds", action="store_true", help="ports mode: include non-localhost listeners"
+    )
     p.add_argument("--no-cache", action="store_true", help="bypass size cache for this run")
-    p.add_argument("--force", action="store_true", help="hook mode: overwrite an existing pre-commit hook")
-    p.add_argument("--run", action="store_true", help="hook mode: scan staged files (used by the installed hook)")
+    p.add_argument(
+        "--force", action="store_true", help="hook mode: overwrite an existing pre-commit hook"
+    )
+    p.add_argument(
+        "--run",
+        action="store_true",
+        help="hook mode: scan staged files (used by the installed hook)",
+    )
     args = p.parse_args()
 
     # Do not start a final background check while the user is disabling it.
@@ -6564,15 +8283,29 @@ def main_cli() -> None:
     elif args.mode == "analyze" and target_paths:
         run_tui(initial_view="analyze", start_path=target_paths[0], use_cache=not args.no_cache)
     elif args.mode == "clean":
-        cli_clean(dry_run=args.dry_run, json_out=args.json_out, roots=target_paths or None, whitelist=whitelist, use_cache=not args.no_cache)
+        cli_clean(
+            dry_run=args.dry_run,
+            json_out=args.json_out,
+            roots=target_paths or None,
+            whitelist=whitelist,
+            use_cache=not args.no_cache,
+        )
     elif args.mode == "purge":
         roots = target_paths or load_purge_roots() or discover_scan_roots()
-        cli_categories(build_purge_categories(roots, whitelist=whitelist),
-                       dry_run=args.dry_run, json_out=args.json_out, label="purge")
+        cli_categories(
+            build_purge_categories(roots, whitelist=whitelist),
+            dry_run=args.dry_run,
+            json_out=args.json_out,
+            label="purge",
+        )
     elif args.mode in ("installer", "installers"):
         roots = target_paths or [USER / "Downloads", USER / "Desktop"]
-        cli_categories(build_installer_categories(roots),
-                       dry_run=args.dry_run, json_out=args.json_out, label="installers")
+        cli_categories(
+            build_installer_categories(roots),
+            dry_run=args.dry_run,
+            json_out=args.json_out,
+            label="installers",
+        )
     elif args.mode == "serve":
         cmd_serve()
     elif args.mode == "status" and args.json_out:
@@ -6582,7 +8315,9 @@ def main_cli() -> None:
     elif args.mode == "optimize":
         cli_optimize(dry_run=args.dry_run, json_out=args.json_out, yes=args.yes)
     elif args.mode == "uninstall" and args.json_out:
-        cli_uninstall(json_out=True, query=args.query, limit=args.limit, include_leftovers=args.leftovers)
+        cli_uninstall(
+            json_out=True, query=args.query, limit=args.limit, include_leftovers=args.leftovers
+        )
     elif args.mode == "update":
         if args.disable_auto or args.enable_auto:
             try:
@@ -6592,8 +8327,11 @@ def main_cli() -> None:
                 CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
                 state = "enabled" if cfg["auto_update"] else "disabled"
                 msg = f"background auto-update {state}"
-                print(json.dumps({"auto_update": cfg["auto_update"]}, indent=2)
-                      if args.json_out else msg)
+                print(
+                    json.dumps({"auto_update": cfg["auto_update"]}, indent=2)
+                    if args.json_out
+                    else msg
+                )
             except Exception as exc:
                 print(f"failed to update config: {exc}")
             return
@@ -6603,8 +8341,12 @@ def main_cli() -> None:
     elif args.mode == "completion":
         cli_completion(shell=args.shell, install=args.install, json_out=args.json_out)
     elif args.mode == "ports":
-        cli_ports(json_out=args.json_out, kill_target=args.kill,
-                  dry_run=args.dry_run, include_all=args.all_binds)
+        cli_ports(
+            json_out=args.json_out,
+            kill_target=args.kill,
+            dry_run=args.dry_run,
+            include_all=args.all_binds,
+        )
     elif args.mode == "doctor":
         cli_doctor(json_out=args.json_out)
     elif args.mode == "undo":
@@ -6613,7 +8355,12 @@ def main_cli() -> None:
         action = "run" if args.run else (args.targets[0].strip().lower() if args.targets else "")
         sys.exit(cli_hook(action=action, json_out=args.json_out, force=args.force))
     else:
-        run_tui(initial_view=args.mode if args.mode in ("status", "optimize", "uninstall", "purge", "installer", "installers") else "analyze", use_cache=not args.no_cache)
+        run_tui(
+            initial_view=args.mode
+            if args.mode in ("status", "optimize", "uninstall", "purge", "installer", "installers")
+            else "analyze",
+            use_cache=not args.no_cache,
+        )
 
 
 if __name__ == "__main__":

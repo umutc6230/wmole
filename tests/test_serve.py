@@ -14,8 +14,11 @@ def _run_serve(requests):
     """serve modunu pipe ile sürer; her istek bir satır. Olay listesini döner."""
     proc = subprocess.Popen(
         [sys.executable, "mole.py", "serve"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, encoding="utf-8",
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
     payload = "".join(json.dumps(r) + "\n" for r in requests)
@@ -29,23 +32,32 @@ class StatusPayloadTest(unittest.TestCase):
         payload = mole.status_payload()
         # psutil yoksa boş sözlük döner; varsa anahtarlar bulunmalı
         if payload:
-            for key in ("cpu_percent", "memory_percent", "disk_percent",
-                        "uptime_seconds", "device"):
+            for key in (
+                "cpu_percent",
+                "memory_percent",
+                "disk_percent",
+                "uptime_seconds",
+                "device",
+            ):
                 self.assertIn(key, payload)
 
 
 class ServePingStatusTest(unittest.TestCase):
     def test_ping(self):
         events, err = _run_serve([{"id": "p1", "op": "ping"}])
-        self.assertTrue(any(e["id"] == "p1" and e["ev"] == "done" and e["ok"]
-                            for e in events), msg=err)
+        self.assertTrue(
+            any(e["id"] == "p1" and e["ev"] == "done" and e["ok"] for e in events), msg=err
+        )
 
     def test_non_object_json_does_not_kill_the_loop(self):
         # `[1]` is valid JSON but has no .get(); it used to crash serve.
         events, err = _run_serve([[1], {"id": "p2", "op": "ping"}])
-        self.assertTrue(any(e["ev"] == "error" and e["code"] == "bad_json" for e in events), msg=err)
-        self.assertTrue(any(e["id"] == "p2" and e["ev"] == "done" and e["ok"]
-                            for e in events), msg=err)
+        self.assertTrue(
+            any(e["ev"] == "error" and e["code"] == "bad_json" for e in events), msg=err
+        )
+        self.assertTrue(
+            any(e["id"] == "p2" and e["ev"] == "done" and e["ok"] for e in events), msg=err
+        )
 
     def test_status(self):
         events, err = _run_serve([{"id": "s1", "op": "status"}])
@@ -59,9 +71,7 @@ class ServeScanTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             (pathlib.Path(d) / "a.txt").write_text("hello")
             (pathlib.Path(d) / "sub").mkdir()
-            events, err = _run_serve([
-                {"id": "a1", "op": "scan", "mode": "analyze", "paths": [d]}
-            ])
+            events, err = _run_serve([{"id": "a1", "op": "scan", "mode": "analyze", "paths": [d]}])
             ids = [e for e in events if e["id"] == "a1"]
             self.assertTrue(any(e["ev"] == "started" for e in ids), msg=err)
             self.assertTrue(any(e["ev"] == "item" for e in ids), msg=err)
@@ -74,10 +84,17 @@ class ServeDeleteTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             f = pathlib.Path(d) / "junk.txt"
             f.write_text("x")
-            events, err = _run_serve([
-                {"id": "d1", "op": "delete", "targets": [str(f)],
-                 "permanent": False, "dry_run": True}
-            ])
+            events, err = _run_serve(
+                [
+                    {
+                        "id": "d1",
+                        "op": "delete",
+                        "targets": [str(f)],
+                        "permanent": False,
+                        "dry_run": True,
+                    }
+                ]
+            )
             ids = [e for e in events if e["id"] == "d1"]
             results = [e for e in ids if e["ev"] == "item_result"]
             self.assertTrue(results, msg=err)
@@ -85,10 +102,17 @@ class ServeDeleteTest(unittest.TestCase):
             self.assertTrue(f.exists())  # dry-run: dosya durmalı
 
     def test_protected_path_is_reported_not_fatal(self):
-        events, err = _run_serve([
-            {"id": "d2", "op": "delete", "targets": ["C:\\Windows"],
-             "permanent": False, "dry_run": False}
-        ])
+        events, err = _run_serve(
+            [
+                {
+                    "id": "d2",
+                    "op": "delete",
+                    "targets": ["C:\\Windows"],
+                    "permanent": False,
+                    "dry_run": False,
+                }
+            ]
+        )
         ids = [e for e in events if e["id"] == "d2"]
         results = [e for e in ids if e["ev"] == "item_result"]
         self.assertTrue(results, msg=err)
@@ -106,9 +130,9 @@ class ServeParityTest(unittest.TestCase):
         self.assertTrue(any(e["ev"] == "done" and e["ok"] for e in ids))
 
     def test_optimize_dry_run(self):
-        events, err = _run_serve([
-            {"id": "o2", "op": "optimize_run", "keys": ["flush-dns"], "dry_run": True}
-        ])
+        events, err = _run_serve(
+            [{"id": "o2", "op": "optimize_run", "keys": ["flush-dns"], "dry_run": True}]
+        )
         ids = [e for e in events if e["id"] == "o2"]
         results = [e for e in ids if e["ev"] == "item_result"]
         self.assertTrue(results and results[0]["ok"], msg=err)
@@ -120,8 +144,22 @@ class ServeParityTest(unittest.TestCase):
 
     def test_ports_list_path_includes_bind_address(self):
         rows = [
-            {"proto": "TCP", "ip": "::", "port": 3000, "pid": 123, "process": "node.exe", "hint": "Node/React"},
-            {"proto": "TCP", "ip": "0.0.0.0", "port": 3000, "pid": 123, "process": "node.exe", "hint": "Node/React"},
+            {
+                "proto": "TCP",
+                "ip": "::",
+                "port": 3000,
+                "pid": 123,
+                "process": "node.exe",
+                "hint": "Node/React",
+            },
+            {
+                "proto": "TCP",
+                "ip": "0.0.0.0",
+                "port": 3000,
+                "pid": 123,
+                "process": "node.exe",
+                "hint": "Node/React",
+            },
         ]
         events = []
 
@@ -141,9 +179,7 @@ class ServeParityTest(unittest.TestCase):
         self.assertTrue(any(e["ev"] == "done" and e["ok"] for e in ids), msg=err)
 
     def test_remove_dry_run(self):
-        events, err = _run_serve([
-            {"id": "rm", "op": "remove", "dry_run": True}
-        ])
+        events, err = _run_serve([{"id": "rm", "op": "remove", "dry_run": True}])
         ids = [e for e in events if e["id"] == "rm"]
         done = [e for e in ids if e["ev"] == "done"]
         self.assertTrue(done and done[0]["ok"], msg=err)
@@ -167,9 +203,7 @@ class ServeExtraTest(unittest.TestCase):
     def test_large_scan(self):
         with tempfile.TemporaryDirectory() as d:
             (pathlib.Path(d) / "x.bin").write_text("x")
-            events, err = _run_serve([
-                {"id": "lg", "op": "scan", "mode": "large", "paths": [d]}
-            ])
+            events, err = _run_serve([{"id": "lg", "op": "scan", "mode": "large", "paths": [d]}])
             ids = [e for e in events if e["id"] == "lg"]
             self.assertTrue(any(e["ev"] == "done" and e["ok"] for e in ids), msg=err)
 
@@ -205,9 +239,11 @@ class ServeFeatureTest(unittest.TestCase):
         self.assertTrue(any(e["ev"] == "done" and e["ok"] for e in ids), msg=err)
 
     def test_ports_kill_invalid_pid_reports_error_and_completes(self):
-        events, err = _run_serve([
-            {"id": "pk", "op": "ports_kill", "pids": ["not-a-pid"], "dry_run": True},
-        ])
+        events, err = _run_serve(
+            [
+                {"id": "pk", "op": "ports_kill", "pids": ["not-a-pid"], "dry_run": True},
+            ]
+        )
         ids = [e for e in events if e["id"] == "pk"]
         item = [e for e in ids if e["ev"] == "item_result"]
         self.assertTrue(item, msg=err)
@@ -216,19 +252,23 @@ class ServeFeatureTest(unittest.TestCase):
         self.assertTrue(any(e["ev"] == "done" and e["ok"] for e in ids), msg=err)
 
     def test_uninstall_run_rejects_arbitrary_command(self):
-        events, err = _run_serve([
-            {"id": "ur", "op": "uninstall_run",
-             "uninstall": "cmd /c echo pwned > NUL"},
-        ])
+        events, err = _run_serve(
+            [
+                {"id": "ur", "op": "uninstall_run", "uninstall": "cmd /c echo pwned > NUL"},
+            ]
+        )
         ids = [e for e in events if e["id"] == "ur"]
-        self.assertTrue(any(e["ev"] == "error" and e["code"] == "no_uninstall_string"
-                            for e in ids), msg=err)
+        self.assertTrue(
+            any(e["ev"] == "error" and e["code"] == "no_uninstall_string" for e in ids), msg=err
+        )
         self.assertTrue(any(e["ev"] == "done" and not e["ok"] for e in ids), msg=err)
 
     def test_settings_set_roundtrip(self):
-        events, err = _run_serve([
-            {"id": "w", "op": "settings_set", "whitelist": ["C:\\test-wl-xyz"]},
-        ])
+        events, err = _run_serve(
+            [
+                {"id": "w", "op": "settings_set", "whitelist": ["C:\\test-wl-xyz"]},
+            ]
+        )
         done = [e for e in events if e["id"] == "w" and e["ev"] == "done"]
         self.assertTrue(done, msg=err)
         self.assertIn("C:\\test-wl-xyz", done[0]["payload"]["whitelist"])
