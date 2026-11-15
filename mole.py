@@ -480,6 +480,23 @@ def path_exists(path: Path) -> bool:
         return False
 
 
+# System cache dirs offered as cleanup categories. They sit under C:\\Windows (a
+# protected default), so every delete in those categories used to be blocked.
+# Only their *contents* are deletable; the folders themselves stay protected.
+_SYSTEM_ROOT = os.environ.get("SystemRoot", r"C:\Windows").rstrip("\\/").lower()
+CLEANABLE_SYSTEM_DIRS = (
+    _SYSTEM_ROOT + r"\temp",
+    _SYSTEM_ROOT + r"\softwaredistribution\download",
+    _SYSTEM_ROOT + (r"\serviceprofiles\networkservice\appdata\local\microsoft"
+                    r"\windows\deliveryoptimization\cache"),
+)
+
+
+def _inside_cleanable_system_dir(raw: str) -> bool:
+    """`raw` is a resolved, lowercased path strictly inside one of those dirs."""
+    return any(raw.startswith(base + "\\") for base in CLEANABLE_SYSTEM_DIRS)
+
+
 # mtime-keyed caches so hot paths (is_protected_path during batch deletes)
 # don't re-read config/denylist from disk for every single target.
 _CONFIG_CACHE: dict = {}
@@ -615,6 +632,8 @@ def is_protected_path(path: Path) -> bool:
         return True
     if path_exists(p / ".git"):
         return True
+    if _inside_cleanable_system_dir(raw):
+        return False
     return any(raw == base or raw.startswith(base + "\\") for base in protected)
 
 
@@ -671,7 +690,8 @@ class ScanFilter:
         for d in self.denylist:
             if raw == d or raw.startswith(d + "\\"):
                 return True
-        if any(raw == base or raw.startswith(base + "\\") for base in self.protected):
+        if not _inside_cleanable_system_dir(raw) and any(
+                raw == base or raw.startswith(base + "\\") for base in self.protected):
             return True
         if ".git" in [part.lower() for part in p.parts]:
             return True
@@ -870,6 +890,30 @@ def quarantine_path(path: Path, size: int = 0) -> str | None:
     return None
 
 
+def _use_quarantine(path: Path) -> bool:
+    """Quarantine is a rename inside one volume. A target on another drive would
+    be copied onto the system drive first, so it goes to that drive's Recycle
+    Bin instead."""
+    if not load_config().get("quarantine_enabled", True):
+        return False
+    return (os.path.splitdrive(os.path.abspath(path))[0].lower()
+            == os.path.splitdrive(os.path.abspath(QUARANTINE_DIR))[0].lower())
+
+
+def empty_quarantine() -> dict:
+    """Permanently drop every quarantined item (frees the space right away)."""
+    with _QUARANTINE_LOCK:
+        entries = _quarantine_entries()
+        for entry in entries:
+            entry_id = str(entry.get("id", ""))
+            if re.fullmatch(r"\d+-[0-9a-f]+", entry_id):
+                shutil.rmtree(QUARANTINE_DIR / entry_id, onerror=_onerr_chmod)
+        _save_quarantine_entries([])
+    freed = sum(int(entry.get("size", 0) or 0) for entry in entries)
+    log_security_event("quarantine-emptied", {"removed": len(entries), "bytes": freed})
+    return {"removed": len(entries), "bytes": freed}
+
+
 def restore_quarantine(entry_id: str) -> str | None:
     entries = _quarantine_entries()
     entry = next((row for row in entries if row.get("id") == entry_id), None)
@@ -957,7 +1001,7 @@ def delete_path(path: Path, use_trash: bool, dry_run: bool, known_size: int = 0)
         log_operation("delete-dry-run", path, size=size, result="ok")
         return None
     if use_trash:
-        if load_config().get("quarantine_enabled", True):
+        if _use_quarantine(path):
             return quarantine_path(path, size=size)
         if send2trash is None:
             # Safe mode requested but recycle-bin support is unavailable.
@@ -1003,9 +1047,10 @@ def trash_paths_batch(paths: List[Path],
     if not paths:
         return result
     sizes = sizes or {}
-    if load_config().get("quarantine_enabled", True):
-        for p in paths:
-            result[str(p)] = quarantine_path(p, size=sizes.get(str(p), 0))
+    for p in [p for p in paths if _use_quarantine(p)]:
+        result[str(p)] = quarantine_path(p, size=sizes.get(str(p), 0))
+    paths = [p for p in paths if str(p) not in result]
+    if not paths:
         return result
     if send2trash is None:
         msg = "recycle bin unavailable (send2trash not installed)"
@@ -1147,9 +1192,10 @@ def build_fixed_path_categories() -> List[tuple]:
 
 def fixed_category_items(key: str, path: Path, selected: bool) -> List[Item]:
     out: List[Item] = []
-    if key == "user-temp":
-        # One item per child: the temp root itself always holds files in use, so
-        # deleting it as a single unit failed every time.
+    if key in ("user-temp", "win-temp", "win-update", "delivery-optimization"):
+        # One item per child: these roots always hold files in use (and the
+        # system ones are protected folders), so deleting the root as a single
+        # unit failed every time.
         try:
             return [Item(path=child, selected=selected) for child in path.iterdir()]
         except OSError:
@@ -4647,39 +4693,74 @@ def _serve_schedule_clear(req: dict, emit, cancel) -> None:
         emit({"id": rid, "ev": "done", "ok": False})
 
 
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_APPROVED_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved"
+STARTUP_FOLDER = APPDATA / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+
+
+def _startup_approved_key(location: str):
+    """(hive, subkey) of the StartupApproved key Windows itself uses (Task
+    Manager > Startup) to switch an entry off without deleting it."""
+    import winreg
+    if location == "Startup Folder":
+        return winreg.HKEY_CURRENT_USER, _APPROVED_KEY + r"\StartupFolder"
+    hive = winreg.HKEY_CURRENT_USER if location.startswith("HKCU") else winreg.HKEY_LOCAL_MACHINE
+    return hive, _APPROVED_KEY + r"\Run"
+
+
+def _startup_enabled(location: str, name: str) -> bool:
+    import winreg
+    hive, sub = _startup_approved_key(location)
+    try:
+        with winreg.OpenKey(hive, sub) as key:
+            data = winreg.QueryValueEx(key, name)[0]
+        return not (data and data[0] & 1)  # odd first byte (03) = disabled
+    except OSError:
+        return True  # no record = enabled
+
+
+def set_startup_enabled(location: str, name: str, enabled: bool) -> None:
+    """Raises OSError (e.g. access denied for HKLM without admin)."""
+    import winreg
+    if location not in ("HKCU\\Run", "HKLM\\Run", "Startup Folder"):
+        raise OSError(f"unknown startup location: {location}")
+    hive, sub = _startup_approved_key(location)
+    stamp = b"\x00" * 8 if enabled else int(
+        (time.time() + 11644473600) * 10_000_000).to_bytes(8, "little")  # FILETIME
+    with winreg.CreateKeyEx(hive, sub, 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, name, 0, winreg.REG_BINARY,
+                          (b"\x02" if enabled else b"\x03") + b"\x00" * 3 + stamp)
+    log_operation("startup-enabled" if enabled else "startup-disabled",
+                  Path(f"{location}\\{name}"), result="ok")
+
+
 def _startup_entries() -> list:
     """Windows başlangıç girdileri: Run registry anahtarları + Startup klasörü."""
     entries = []
     try:
         import winreg
-        hives = [
-            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", "HKCU"),
-            (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run", "HKLM"),
-        ]
-        for hive, sub, label in hives:
+        for hive, label in ((winreg.HKEY_CURRENT_USER, "HKCU"), (winreg.HKEY_LOCAL_MACHINE, "HKLM")):
             try:
-                key = winreg.OpenKey(hive, sub)
-                i = 0
-                while True:
-                    try:
-                        name, val, _ = winreg.EnumValue(key, i)
-                        entries.append({"name": name, "command": val,
-                                        "location": f"{label}\\Run", "enabled": True})
+                with winreg.OpenKey(hive, _RUN_KEY) as key:
+                    i = 0
+                    while True:
+                        try:
+                            name, val, _ = winreg.EnumValue(key, i)
+                        except OSError:
+                            break
                         i += 1
-                    except OSError:
-                        break
-                winreg.CloseKey(key)
+                        location = f"{label}\\Run"
+                        entries.append({"name": name, "command": val, "location": location,
+                                        "enabled": _startup_enabled(location, name)})
             except OSError:
                 pass
+        if STARTUP_FOLDER.is_dir():
+            for f in STARTUP_FOLDER.iterdir():
+                if f.name.lower() == "desktop.ini":
+                    continue
+                entries.append({"name": f.name, "command": str(f), "location": "Startup Folder",
+                                "enabled": _startup_enabled("Startup Folder", f.name)})
     except (ImportError, OSError):
-        pass
-    startup_dir = USER / "AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup"
-    try:
-        if startup_dir.is_dir():
-            for f in startup_dir.iterdir():
-                entries.append({"name": f.name, "command": str(f),
-                                "location": "Startup Folder", "enabled": True})
-    except OSError:
         pass
     return entries
 
@@ -4690,40 +4771,19 @@ def _serve_startup_list(req: dict, emit, cancel) -> None:
     for e in _startup_entries():
         emit({"id": rid, "ev": "item", "path": e["command"], "name": e["name"],
               "size": 0, "kind": "startup", "location": e["location"],
-              "selected": False})
+              "enabled": e["enabled"], "selected": False})
     emit({"id": rid, "ev": "done", "ok": True})
 
 
-def _serve_startup_disable(req: dict, emit, cancel) -> None:
+def _serve_startup_set(req: dict, emit, cancel) -> None:
+    """Switch a startup entry off/on. Nothing is deleted, so it is reversible."""
     rid = req.get("id")
-    name = req.get("name", "")
-    location = req.get("location", "")
+    name = str(req.get("name", ""))
+    enabled = bool(req.get("enabled", False))
     emit({"id": rid, "ev": "started", "total_hint": None})
     try:
-        if location.endswith("Run"):
-            import winreg
-            hive = winreg.HKEY_CURRENT_USER if location.startswith("HKCU") else winreg.HKEY_LOCAL_MACHINE
-            key = winreg.OpenKey(hive, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
-                                 winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE)
-            # The value is deleted, not disabled: log the command first so it
-            # can be put back by hand from operations.log.
-            command = winreg.QueryValueEx(key, name)[0]
-            winreg.DeleteValue(key, name)
-            winreg.CloseKey(key)
-            log_operation("startup-removed", Path(f"{location}\\{name}"), result=str(command))
-            emit({"id": rid, "ev": "item_result", "path": name, "ok": True})
-        elif location == "Startup Folder":
-            err = delete_path(Path(req.get("path", "")), use_trash=True, dry_run=False)
-            emit({"id": rid, "ev": "item_result", "path": name, "ok": err is None,
-                  "error": err})
-            if err:
-                emit({"id": rid, "ev": "done", "ok": False})
-                return
-        else:
-            emit({"id": rid, "ev": "error", "code": "startup_failed",
-                  "message": f"unknown startup location: {location}"})
-            emit({"id": rid, "ev": "done", "ok": False})
-            return
+        set_startup_enabled(str(req.get("location", "")), name, enabled)
+        emit({"id": rid, "ev": "item_result", "path": name, "ok": True, "enabled": enabled})
         emit({"id": rid, "ev": "done", "ok": True})
     except OSError as exc:
         emit({"id": rid, "ev": "error", "code": "startup_failed", "message": str(exc)})
@@ -5034,8 +5094,8 @@ def _serve_handle(req: dict, emit, cancels: dict) -> None:
             _serve_schedule_clear(req, emit, cancel)
         elif op == "startup_list":
             _serve_startup_list(req, emit, cancel)
-        elif op == "startup_disable":
-            _serve_startup_disable(req, emit, cancel)
+        elif op in ("startup_set", "startup_disable"):  # startup_disable: older GUI builds
+            _serve_startup_set(req, emit, cancel)
         elif op == "processes_list":
             _serve_processes_list(req, emit, cancel)
         elif op == "duplicates":
@@ -5044,6 +5104,8 @@ def _serve_handle(req: dict, emit, cancels: dict) -> None:
             _serve_security_overview(req, emit, cancel)
         elif op == "quarantine_restore":
             _serve_quarantine_restore(req, emit, cancel)
+        elif op == "quarantine_empty":
+            emit({"id": rid, "ev": "done", "ok": True, "payload": empty_quarantine()})
         elif op == "secret_scan":
             _serve_secret_scan(req, emit, cancel)
         elif op == "supply_audit":
@@ -5508,9 +5570,30 @@ def _launch_updated(new_path: Path, asset_name: str, latest_tag: str) -> None:
     os._exit(0)
 
 
-def _download(url: str, dest: Path, on_progress=None) -> None:
+def _asset_sha256(asset: dict) -> str:
+    """SHA-256 GitHub publishes for a release asset ('sha256:<hex>'), or ''."""
+    algo, _, value = str(asset.get("digest") or "").partition(":")
+    return value.lower() if algo == "sha256" and re.fullmatch(r"[0-9a-fA-F]{64}", value) else ""
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return ""
+    return digest.hexdigest()
+
+
+def _download(url: str, dest: Path, on_progress=None, sha256: str = "") -> None:
+    """Download `url` to `dest`. With `sha256`, a mismatching file is deleted
+    and ValueError raised: an update is executed, so it is never trusted on
+    size alone."""
     import urllib.request
     req = urllib.request.Request(url, headers={"User-Agent": f"wmole/{__version__}"})
+    digest = hashlib.sha256()
     with urllib.request.urlopen(req, timeout=30) as resp, open(dest, "wb") as fh:
         total = int(resp.headers.get("Content-Length") or 0)
         read = 0
@@ -5519,9 +5602,13 @@ def _download(url: str, dest: Path, on_progress=None) -> None:
             if not chunk:
                 break
             fh.write(chunk)
+            digest.update(chunk)
             read += len(chunk)
             if on_progress and total:
                 on_progress(read, total)
+    if sha256 and digest.hexdigest() != sha256.lower():
+        dest.unlink(missing_ok=True)
+        raise ValueError("checksum mismatch")
 
 
 def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
@@ -5566,6 +5653,11 @@ def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
         url = asset["browser_download_url"]
         name = Path(asset["name"]).name  # strip any path components from the API value
         expected_size = int(asset.get("size") or 0)
+        expected_sha = _asset_sha256(asset)
+        if not expected_sha:
+            steps.append({"step": "asset", "code": 1,
+                          "output": f"{name}: release publishes no SHA-256, refusing to install"})
+            return _emit_update(steps, json_out, quiet, sink)
         steps.append({"step": "asset", "code": 0, "output": name})
 
         if dry_run:
@@ -5594,7 +5686,7 @@ def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
                     last_pct[0] = pct
                     sys.stdout.write(f"\rdownloading {name}: {pct:3d}%")
                     sys.stdout.flush()
-            _download(url, dest, on_progress=_prog)
+            _download(url, dest, on_progress=_prog, sha256=expected_sha)
             if not json_out:
                 sys.stdout.write("\n")
             if expected_size > 0 and dest.stat().st_size != expected_size:
@@ -5679,6 +5771,9 @@ def _auto_update_worker() -> None:
         if not asset:
             return
         expected_size = int(asset.get("size") or 0)
+        expected_sha = _asset_sha256(asset)
+        if not expected_sha:
+            return  # nothing to verify against: never stage an unverified exe
         dest = TEMP / Path(asset["name"]).name  # strip any path components
 
         # Skip download if we already have this exact installer staged.
@@ -5692,11 +5787,9 @@ def _auto_update_worker() -> None:
             except Exception:
                 pass
 
-        if dest.exists() and expected_size and dest.stat().st_size == expected_size:
-            pass  # already fully downloaded
-        else:
+        if _sha256_file(dest) != expected_sha:  # not already downloaded intact
             try:
-                _download(asset["browser_download_url"], dest)
+                _download(asset["browser_download_url"], dest, sha256=expected_sha)
             except Exception:
                 return
 
@@ -5705,6 +5798,7 @@ def _auto_update_worker() -> None:
                 "version": latest_tag,
                 "name": asset["name"],
                 "path": str(dest),
+                "sha256": expected_sha,
                 "downloaded_at": time.time(),
                 "from_version": __version__,
             }), encoding="utf-8")
@@ -5757,7 +5851,9 @@ def apply_pending_update() -> bool:
             return False
         path = Path(info.get("path", ""))
         asset_name = info.get("name", path.name)
-        if not path.exists():
+        # The installer waited in %TEMP%, writable by any process of this user:
+        # re-check it against the recorded hash right before executing it.
+        if not path.exists() or not info.get("sha256") or _sha256_file(path) != info["sha256"]:
             PENDING_UPDATE_FILE.unlink(missing_ok=True)  # type: ignore[arg-type]
             return False
         # Smart launch: uses setup flags for installers, batch-swap for raw EXEs

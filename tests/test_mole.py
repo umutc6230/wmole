@@ -1307,6 +1307,101 @@ class DuplicateHashTests(unittest.TestCase):
         self.assertEqual(shared, {"Code"})
         self.assertEqual(alone, {"Code", "Microsoft"})
 
+    def test_only_contents_of_system_cache_dirs_are_deletable(self):
+        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\Temp")))
+        self.assertFalse(mole.is_protected_path(Path(r"C:\Windows\Temp\junk.tmp")))
+        self.assertFalse(mole.is_protected_path(
+            Path(r"C:\Windows\SoftwareDistribution\Download\abc")))
+        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\Temporary")))
+        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\System32\drivers")))
+
+    def test_system_temp_category_lists_children_not_the_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "a.tmp").write_text("x", encoding="utf-8")
+            (Path(td) / "sub").mkdir()
+            items = mole.fixed_category_items("win-temp", Path(td), selected=True)
+        self.assertEqual(sorted(i.path.name for i in items), ["a.tmp", "sub"])
+
+    def test_other_drive_goes_to_recycle_bin_not_quarantine(self):
+        with mock.patch.object(mole, "QUARANTINE_DIR", Path(r"C:\Users\x\.wmole\quarantine")), \
+             mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": True}):
+            self.assertTrue(mole._use_quarantine(Path(r"C:\proj\node_modules")))
+            self.assertFalse(mole._use_quarantine(Path(r"D:\proj\node_modules")))
+        with mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": False}):
+            self.assertFalse(mole._use_quarantine(Path(r"C:\proj\node_modules")))
+
+    def test_empty_quarantine_removes_items_and_index(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "cache"
+            source.mkdir()
+            (source / "f.txt").write_text("data", encoding="utf-8")
+            with contextlib.ExitStack() as stack:
+                for patch in self._vault(root):
+                    stack.enter_context(patch)
+                self.assertIsNone(mole.quarantine_path(source, size=4))
+                self.assertEqual(mole.empty_quarantine(), {"removed": 1, "bytes": 4})
+                self.assertEqual(mole._quarantine_entries(), [])
+                self.assertEqual([p.name for p in (root / "vault").iterdir()], ["index.json"])
+
+    def test_download_rejects_wrong_checksum_and_deletes_file(self):
+        body = b"installer-bytes"
+        good = mole.hashlib.sha256(body).hexdigest()
+
+        def fake_urlopen(*_a, **_k):
+            resp = mock.MagicMock()
+            resp.__enter__.return_value = resp
+            resp.headers = {"Content-Length": str(len(body))}
+            resp.read.side_effect = [body, b""]
+            return resp
+
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "wmole.exe"
+            with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                mole._download("https://example.invalid/x", dest, sha256=good)
+                self.assertEqual(mole._sha256_file(dest), good)
+                with self.assertRaises(ValueError):
+                    mole._download("https://example.invalid/x", dest, sha256="0" * 64)
+            self.assertFalse(dest.exists())
+
+    def test_asset_sha256_parses_only_valid_github_digest(self):
+        self.assertEqual(mole._asset_sha256({"digest": "sha256:" + "AB" * 32}), "ab" * 32)
+        self.assertEqual(mole._asset_sha256({"digest": "md5:abcd"}), "")
+        self.assertEqual(mole._asset_sha256({}), "")
+
+    def test_tampered_staged_update_is_not_launched(self):
+        with tempfile.TemporaryDirectory() as td:
+            staged = Path(td) / "wmole.exe"
+            staged.write_bytes(b"evil")
+            pending = Path(td) / "pending.json"
+            pending.write_text(json.dumps({"version": "v99.0.0", "name": "wmole.exe",
+                                           "path": str(staged), "sha256": "0" * 64}),
+                               encoding="utf-8")
+            with mock.patch.object(mole.sys, "frozen", True, create=True), \
+                 mock.patch.object(mole.sys, "argv", ["wmole.exe", "status"]), \
+                 mock.patch.object(mole, "PENDING_UPDATE_FILE", pending), \
+                 mock.patch.object(mole, "_auto_update_disabled", return_value=False), \
+                 mock.patch.object(mole, "_launch_updated") as launch:
+                self.assertFalse(mole.apply_pending_update())
+            launch.assert_not_called()
+            self.assertFalse(pending.exists())
+
+    def test_startup_toggle_writes_startup_approved_flag(self):
+        import winreg
+        name = "wmole-test-entry"
+        sub = mole._APPROVED_KEY + r"\Run"
+        try:
+            with mock.patch.object(mole, "log_operation"):
+                mole.set_startup_enabled("HKCU\\Run", name, False)
+                self.assertFalse(mole._startup_enabled("HKCU\\Run", name))
+                mole.set_startup_enabled("HKCU\\Run", name, True)
+                self.assertTrue(mole._startup_enabled("HKCU\\Run", name))
+                with self.assertRaises(OSError):
+                    mole.set_startup_enabled("Nowhere", name, False)
+        finally:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, sub, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.DeleteValue(key, name)
+
     def test_jetbrains_category_offers_only_cache_dirs(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)

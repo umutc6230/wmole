@@ -3,6 +3,7 @@
   import { request } from "$lib/sidecar";
   import { toast } from "$lib/toast";
   import { t, tr } from "$lib/i18n";
+  import GenericConfirm from "./GenericConfirm.svelte";
 
   interface QuarantineEntry { id: string; original: string; name: string; size: number; created: number; }
   interface SecretFinding { type: string; path: string; line: number; preview: string; severity: string; }
@@ -18,6 +19,8 @@
   let quarantineEnabled = $state(true);
   let retentionDays = $state(30);
   let newProcess = $state("");
+  let emptyOpen = $state(false);
+  let quarantineBytes = $derived(quarantine.reduce((sum, entry) => sum + (entry.size || 0), 0));
   let secrets = $state<{ scanned: number; findings: SecretFinding[]; truncated?: boolean } | null>(null);
   let supply = $state<{ sbom: Array<{ path: string; name: string; sha256: string }>; audits: AuditResult[] } | null>(null);
 
@@ -62,6 +65,14 @@
   async function restore(id: string) {
     const result = await request({ op: "quarantine_restore", entry_id: id });
     toast(tr(result.ok ? "Karantina öğesi geri yüklendi" : "Geri yükleme başarısız"), result.ok ? "ok" : "err");
+    await load();
+  }
+
+  async function emptyQuarantine() {
+    emptyOpen = false;
+    const result = await request({ op: "quarantine_empty" });
+    const freed = Number((result.payload as any)?.bytes ?? 0);
+    toast(`${tr("Karantina boşaltıldı")}: ${fmt(freed)} ${tr("yer açıldı")}`, result.ok ? "ok" : "err");
     await load();
   }
 
@@ -119,7 +130,8 @@
   </section>
 
   <section class="panel">
-    <h3>Geri Alma Kasası</h3>
+    <div class="row"><h3>Geri Alma Kasası</h3><span class="muted">{quarantine.length} öğe · {fmt(quarantineBytes)}</span>
+      {#if quarantine.length}<button onclick={() => (emptyOpen = true)}>{$t("Karantinayı Boşalt")}</button>{/if}</div>
     {#if !quarantine.length}<p class="muted">Karantinada öğe yok.</p>{/if}
     {#each quarantine as entry}
       <div class="entry"><div><b>{entry.name}</b><span>{entry.original} · {fmt(entry.size)} · {new Date(entry.created * 1000).toLocaleString()}</span></div><button onclick={() => restore(entry.id)}>Geri Yükle</button></div>
@@ -138,6 +150,10 @@
     <div class="results log">{#each logs as item}<div class="event"><time>{item.timestamp}</time><b>{item.event}</b><span>{JSON.stringify(item.details)}</span></div>{/each}</div>
   </section>
 </div>
+
+<GenericConfirm open={emptyOpen} danger title="Karantinayı Boşalt"
+  message={tr("Karantinadaki tüm öğeler kalıcı olarak silinecek ve geri alınamayacak. Devam?")}
+  confirmLabel="Karantinayı Boşalt" onConfirm={emptyQuarantine} onCancel={() => (emptyOpen = false)} />
 
 <style>
   .security { display: flex; flex-direction: column; gap: 12px; font-family: monospace; overflow: auto; }
