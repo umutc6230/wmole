@@ -1,5 +1,6 @@
 <script lang="ts">
   import { lang } from "$lib/i18n";
+  import { openUrl } from "@tauri-apps/plugin-opener";
 
   const content = {
     tr: {
@@ -13,10 +14,10 @@
             ["Gösterge Paneli", "Sistem özeti, temizlik analizi ve geçmiş. Tek tıkla 'Hızlı Temizle'."],
             ["Gezgin", "Dosya sistemini canlı boyutlarla gez; klasöre gir, yukarı çık, büyük dosyaları, sürücüleri ve treemap'i gör."],
             ["Kategoriler", "Disk kullanımını kategoriye göre (cache, tarayıcı, sistem) listele."],
-            ["Temizle", "Güvenli temizlik kategorilerini tara ve Geri Dönüşüm Kutusu'na taşı."],
+            ["Temizle", "Güvenli temizlik kategorilerini tara ve geri alınabilir şekilde sil."],
             ["Artıklar", "node_modules / build / dist gibi geliştirici artıklarını toplu sil."],
             ["Kurulumlar", "İndirilenler ve Masaüstü'ndeki eski kurulum dosyalarını bul."],
-            ["Yinelenenler", "Boyut + MD5 ile yinelenen dosyaları bul."],
+            ["Yinelenenler", "Boyut + içerik özeti ile yinelenen dosyaları bul."],
           ],
         },
         {
@@ -24,7 +25,7 @@
           items: [
             ["Kaldır", "Kurulu programları listele, kaldır, kalıntı dosya/registry'yi temizle."],
             ["Optimize", "DNS flush, Winsock/IP reset, Prefetch, Windows Update reset vb. (Dry-run destekli)."],
-            ["Başlangıç", "Sistem açılışında çalışan programları yönet."],
+            ["Başlangıç", "Sistem açılışında çalışan programları devre dışı bırak ya da yeniden etkinleştir (silinmez)."],
             ["Portlar", "Dinleyen geliştirici portlarını listele ve süreçleri kapat."],
             ["İşlemler", "RAM kullanımına göre süreçleri listele ve kapat."],
             ["Bakım", "Güncelleme kontrolü/uygulama ve ~/.wmole durumunu kaldırma."],
@@ -33,7 +34,7 @@
         {
           title: "Güvenlik",
           items: [
-            ["Varsayılan: Geri Dönüşüm Kutusu", "Silmeler varsayılan olarak Geri Dönüşüm Kutusu'na gider; kalıcı silme ek onay gerektirir."],
+            ["Varsayılan: karantina", "Silmeler varsayılan olarak ~/.wmole/quarantine altına taşınır ve 30 gün boyunca Güvenlik Merkezi'nden geri alınabilir (başka sürücüdekiler Geri Dönüşüm Kutusu'na gider); disk alanı süre dolunca ya da 'Karantinayı Boşalt' ile açılır. Kalıcı silme ek onay gerektirir."],
             ["Korumalı yollar", "Sürücü kökleri, C:\\Windows, Program Files, kullanıcı profili ve .git içeren yollar engellenir."],
             ["İptal edilebilir", "Uzun işlemler alt şeritteki 'İptal' ile durdurulabilir; arayüz hiç donmaz."],
             ["İşlem günlüğü", "Tüm silmeler ~/.wmole/logs/operations.log dosyasına yazılır."],
@@ -52,10 +53,10 @@
             ["Dashboard", "System overview, cleanup analysis & history. One-click 'Quick Clean'."],
             ["Analyze", "Browse the filesystem with live sizes; enter folders, go up, view large files, drives and treemap."],
             ["Categories", "List disk usage by category (cache, browser, system)."],
-            ["Clean", "Scan safe cleanup categories and move to Recycle Bin."],
+            ["Clean", "Scan safe cleanup categories and delete them restorably."],
             ["Purge", "Bulk-delete developer artifacts like node_modules / build / dist."],
             ["Installers", "Find old setup files in Downloads and Desktop."],
-            ["Duplicates", "Find duplicate files by size + MD5."],
+            ["Duplicates", "Find duplicate files by size + content hash."],
           ],
         },
         {
@@ -72,7 +73,7 @@
         {
           title: "Safety",
           items: [
-            ["Default: Recycle Bin", "Deletes go to the Recycle Bin by default; permanent delete needs extra confirmation."],
+            ["Default: quarantine", "Deletes are moved to ~/.wmole/quarantine by default and can be restored from the Security Center for 30 days (items on other drives go to the Recycle Bin); disk space is freed when the retention expires or via 'Empty Quarantine'. Permanent delete needs extra confirmation."],
             ["Protected paths", "Drive roots, C:\\Windows, Program Files, user profile and paths containing .git are blocked."],
             ["Cancellable", "Long operations can be stopped via 'Cancel' in the status bar; the UI never freezes."],
             ["Operation log", "All deletions are written to ~/.wmole/logs/operations.log."],
@@ -100,6 +101,11 @@
       </dl>
     </section>
   {/each}
+  <p class="owner">
+    {$lang === "tr" ? "Ürün sahibi" : "Product Owner"}: Umut Çelik ·
+    <button onclick={() => openUrl("https://x.com/umutc6230")}>X</button> ·
+    <button onclick={() => openUrl("https://github.com/umutc6230")}>GitHub</button>
+  </p>
 </div>
 
 <style>
@@ -112,4 +118,6 @@
   .item { display: grid; grid-template-columns: 200px 1fr; gap: 12px; }
   dt { color: #d29922; }
   dd { margin: 0; color: var(--muted); }
+  .owner { color: var(--faint); font-size: 12px; margin: 0; }
+  .owner button { background: none; border: none; padding: 0; color: #58a6ff; cursor: pointer; font: inherit; text-decoration: underline; }
 </style>

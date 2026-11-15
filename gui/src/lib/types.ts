@@ -24,11 +24,12 @@ export type Op =
   | "schedule_set"
   | "schedule_clear"
   | "startup_list"
-  | "startup_disable"
+  | "startup_set"
   | "processes_list"
   | "duplicates"
   | "security_overview"
   | "quarantine_restore"
+  | "quarantine_empty"
   | "secret_scan"
   | "supply_audit";
 
@@ -62,6 +63,7 @@ export interface Request {
   location?: string;
   min_size?: number;
   entry_id?: string;
+  enabled?: boolean;
 }
 
 export interface SidecarEvent {

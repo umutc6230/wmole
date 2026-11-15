@@ -47,8 +47,13 @@
           bind:checked={permanent}
           onchange={() => (confirmPermanent = false)}
         />
-        {$t("Kalıcı sil (Geri Dönüşüm Kutusu'nu atla)")}
+        {$t("Kalıcı sil (geri alınamaz)")}
       </label>
+      {#if !permanent}
+        <p class="hint">
+          {$t("Öğeler 30 gün karantinada tutulur (Güvenlik Merkezi'nden geri alınır); başka sürücüdekiler Geri Dönüşüm Kutusu'na gider. Disk alanı karantina boşaltılınca açılır.")}
+        </p>
+      {/if}
       {#if permanent && confirmPermanent}
         <p class="warn">
           {$t("⚠ Bu işlem GERİ ALINAMAZ. Onaylamak için tekrar \"Kalıcı Sil\" butonuna bas.")}
@@ -61,7 +66,7 @@
             ? confirmPermanent
               ? $t("Kalıcı Sil (onayla)")
               : $t("Kalıcı Sil")
-            : $t("Geri Dönüşüm Kutusu'na Taşı")}
+            : $t("Geri Alınabilir Sil")}
         </button>
       </div>
     </div>
@@ -96,6 +101,7 @@
     color: var(--muted);
   }
   .warn { color: #e5534b; font-size: 13px; }
+  .hint { color: var(--faint); font-size: 12px; max-width: 420px; line-height: 1.4; }
   .actions {
     display: flex;
     justify-content: flex-end;

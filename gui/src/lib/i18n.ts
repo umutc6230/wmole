@@ -90,9 +90,20 @@ const EN: Record<string, string> = {
   Başla: "Start",
   // Confirm modal
   "Silme Onayı": "Delete Confirmation",
-  "Kalıcı sil (Geri Dönüşüm Kutusu'nu atla)":
-    "Permanent delete (skip Recycle Bin)",
-  "Geri Dönüşüm Kutusu'na Taşı": "Move to Recycle Bin",
+  "Kalıcı sil (geri alınamaz)": "Permanent delete (cannot be undone)",
+  "Geri Alınabilir Sil": "Delete (restorable)",
+  "Öğeler 30 gün karantinada tutulur (Güvenlik Merkezi'nden geri alınır); başka sürücüdekiler Geri Dönüşüm Kutusu'na gider. Disk alanı karantina boşaltılınca açılır.":
+    "Items are kept in quarantine for 30 days (restore from the Security Center); items on other drives go to the Recycle Bin. Disk space is freed when the quarantine is emptied.",
+  "Devre Dışı Bırak": "Disable",
+  Etkinleştir: "Enable",
+  kapalı: "disabled",
+  "devre dışı bırakıldı": "disabled",
+  etkinleştirildi: "enabled",
+  "Karantinayı Boşalt": "Empty Quarantine",
+  "Karantinadaki tüm öğeler kalıcı olarak silinecek ve geri alınamayacak. Devam?":
+    "Every quarantined item will be permanently deleted and cannot be restored. Continue?",
+  "Karantina boşaltıldı": "Quarantine emptied",
+  "yer açıldı": "freed",
   "Kalıcı Sil": "Permanent Delete",
   "Kalıcı Sil (onayla)": "Permanent Delete (confirm)",
   "⚠ Bu işlem GERİ ALINAMAZ. Onaylamak için tekrar \"Kalıcı Sil\" butonuna bas.":

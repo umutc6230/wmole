@@ -13,7 +13,7 @@ Windows-first port of [tw93/Mole](https://github.com/tw93/Mole): a terminal main
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
 ![Python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)
 ![UI](https://img.shields.io/badge/ui-rich-20232A)
-![Safety](https://img.shields.io/badge/delete-default%20to%20recycle%20bin-2E7D32)
+![Safety](https://img.shields.io/badge/delete-restorable%20by%20default-2E7D32)
 
 ## Table of Contents
 
@@ -36,7 +36,7 @@ Windows-first port of [tw93/Mole](https://github.com/tw93/Mole): a terminal main
 ## Features
 
 - Path-based Analyze TUI explorer with folder navigation, large-files view, and drive picker.
-- Safe cleanup defaults with recycle-bin first, blocked protected paths, denylist, whitelist, and operation logs.
+- Safe cleanup defaults with restorable deletes (30-day quarantine), blocked protected paths, denylist, whitelist, and operation logs.
 - Purge mode for developer artifacts (`node_modules`, `.venv`, `target`, `dist`, `.next`, and more).
 - Installer mode for old setup files.
 - Smart uninstall helper with fuzzy leftover detection (filesystem + registry key candidates).
@@ -77,7 +77,7 @@ Windows-first port of [tw93/Mole](https://github.com/tw93/Mole): a terminal main
 
 ## Safety Model
 
-- Default delete mode is recycle-bin (`send2trash`).
+- Default delete mode is restorable: items move to `~/.wmole/quarantine` for 30 days (`wmole undo`); items on another drive, or with quarantine disabled, go to the Recycle Bin (`send2trash`).
 - Permanent delete requires explicitly enabling permanent mode with `K` in TUI.
 - `--dry-run` supported for destructive CLI flows.
 - Protected paths blocked, including:
@@ -232,3 +232,7 @@ py -m unittest discover -s tests
 - Expand leftover matching precision and confidence scoring.
 - Add optional deeper Docker/WSL cleanup profiles.
 - Improve completion setup UX across shells.
+
+## Product Owner
+
+Product Owner: Umut Çelik - [X](https://x.com/umutc6230) · [GitHub](https://github.com/umutc6230)

@@ -38,8 +38,10 @@ class WmoleBehaviorTests(unittest.TestCase):
             calls.append(arg)
 
         paths = [Path(r"C:\a\cache"), Path(r"C:\b\tmp")]
-        with mock.patch.object(mole, "send2trash", fake_send2trash), \
-             mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": False}):
+        with (
+            mock.patch.object(mole, "send2trash", fake_send2trash),
+            mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": False}),
+        ):
             res = mole.trash_paths_batch(paths, sizes={str(paths[0]): 100, str(paths[1]): 5})
 
         # One batched call carrying both paths as a list.
@@ -59,8 +61,10 @@ class WmoleBehaviorTests(unittest.TestCase):
                 raise OSError("nope")
 
         paths = [Path(r"C:\good"), Path(r"C:\bad")]
-        with mock.patch.object(mole, "send2trash", fake_send2trash), \
-             mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": False}):
+        with (
+            mock.patch.object(mole, "send2trash", fake_send2trash),
+            mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": False}),
+        ):
             res = mole.trash_paths_batch(paths)
 
         self.assertIsNone(res[str(paths[0])])
@@ -107,7 +111,9 @@ class WmoleBehaviorTests(unittest.TestCase):
     def test_protected_path_blocks_drive_root_and_windows_dir(self):
         self.assertTrue(mole.is_protected_path(Path("C:\\")))
         self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\Temp")))
-        self.assertFalse(mole.is_protected_path(Path(r"C:\Users\example\AppData\Local\Temp\wmole-safe")))
+        self.assertFalse(
+            mole.is_protected_path(Path(r"C:\Users\example\AppData\Local\Temp\wmole-safe"))
+        )
 
     def test_installer_categories_are_separate_from_full_scanner(self):
         with tempfile.TemporaryDirectory() as td:
@@ -208,7 +214,9 @@ class WmoleBehaviorTests(unittest.TestCase):
             self.assertIn(shortcut, paths)
 
     def test_collect_selected_targets_separates_protected_items(self):
-        allowed = mole.Item(path=Path(r"C:\Users\example\AppData\Local\Temp\cache"), size=10, selected=True)
+        allowed = mole.Item(
+            path=Path(r"C:\Users\example\AppData\Local\Temp\cache"), size=10, selected=True
+        )
         blocked = mole.Item(path=Path(r"C:\Windows\Temp"), size=20, selected=True)
         cat = mole.Category(key="test", title="Test", description="", items=[allowed, blocked])
 
@@ -281,9 +289,7 @@ class WmoleBehaviorTests(unittest.TestCase):
         self.assertNotIn("/analyze", rendered)
 
     def test_enter_runs_highlighted_palette_command_after_scrolling(self):
-        keys = iter(
-            ["/"] + ["DOWN"] * (len(mole.palette_commands()) - 1) + ["ENTER"]
-        )
+        keys = iter(["/"] + ["DOWN"] * (len(mole.palette_commands()) - 1) + ["ENTER"])
         fake_scanner = mock.Mock(
             status="",
             done=True,
@@ -323,9 +329,7 @@ class WmoleBehaviorTests(unittest.TestCase):
 
     def test_help_and_footer_do_not_advertise_top_level_mode_hotkeys(self):
         with mock.patch.object(mole, "LANG", "en"):
-            help_text = "\n".join(
-                line for _, lines in mole._help_sections_en() for line in lines
-            )
+            help_text = "\n".join(line for _, lines in mole._help_sections_en() for line in lines)
             footer_text = "\n".join(mole.build_footer_lines(160))
 
         self.assertIn("/analyze", help_text)
@@ -334,11 +338,9 @@ class WmoleBehaviorTests(unittest.TestCase):
 
     def test_open_palette_places_command_rows_within_visible_terminal_height(self):
         output = io.StringIO()
-        test_console = Console(
-            record=True, width=140, height=40, color_system=None, file=output
-        )
+        test_console = Console(record=True, width=140, height=40, color_system=None, file=output)
         items = [
-            mole.Item(path=Path(fr"C:\Users\example\folder-{index}"), size=index + 1)
+            mole.Item(path=Path(rf"C:\Users\example\folder-{index}"), size=index + 1)
             for index in range(30)
         ]
         category = mole.Category(
@@ -362,9 +364,7 @@ class WmoleBehaviorTests(unittest.TestCase):
             mock.patch.object(mole, "free_space_gb", return_value=18.1),
         ):
             test_console.print(
-                mole.render(
-                    scanner, view, 0, "", True, False, [], [], palette=("", 0)
-                )
+                mole.render(scanner, view, 0, "", True, False, [], [], palette=("", 0))
             )
 
         lines = test_console.export_text().splitlines()
@@ -384,11 +384,9 @@ class WmoleBehaviorTests(unittest.TestCase):
 
     def test_open_palette_scrolls_inside_border_in_short_terminal(self):
         output = io.StringIO()
-        test_console = Console(
-            record=True, width=140, height=30, color_system=None, file=output
-        )
+        test_console = Console(record=True, width=140, height=30, color_system=None, file=output)
         items = [
-            mole.Item(path=Path(fr"C:\Users\example\folder-{index}"), size=index + 1)
+            mole.Item(path=Path(rf"C:\Users\example\folder-{index}"), size=index + 1)
             for index in range(30)
         ]
         category = mole.Category(
@@ -412,7 +410,14 @@ class WmoleBehaviorTests(unittest.TestCase):
         ):
             test_console.print(
                 mole.render(
-                    scanner, view, 0, "", True, False, [], [],
+                    scanner,
+                    view,
+                    0,
+                    "",
+                    True,
+                    False,
+                    [],
+                    [],
                     palette=("", len(mole.palette_commands()) - 1),
                 )
             )
@@ -424,11 +429,9 @@ class WmoleBehaviorTests(unittest.TestCase):
 
     def test_open_palette_prioritizes_closed_frame_in_minimal_terminal(self):
         output = io.StringIO()
-        test_console = Console(
-            record=True, width=140, height=22, color_system=None, file=output
-        )
+        test_console = Console(record=True, width=140, height=22, color_system=None, file=output)
         items = [
-            mole.Item(path=Path(fr"C:\Users\example\folder-{index}"), size=index + 1)
+            mole.Item(path=Path(rf"C:\Users\example\folder-{index}"), size=index + 1)
             for index in range(30)
         ]
         category = mole.Category(
@@ -452,7 +455,14 @@ class WmoleBehaviorTests(unittest.TestCase):
         ):
             test_console.print(
                 mole.render(
-                    scanner, view, 0, "", True, False, [], [],
+                    scanner,
+                    view,
+                    0,
+                    "",
+                    True,
+                    False,
+                    [],
+                    [],
                     palette=("", len(mole.palette_commands()) - 1),
                 )
             )
@@ -552,8 +562,10 @@ class WmoleBehaviorTests(unittest.TestCase):
         if os.name != "nt":
             return False
         import subprocess
-        r = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
-                           capture_output=True)
+
+        r = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
+        )
         return r.returncode == 0 and link.exists()
 
     def test_dir_size_does_not_follow_directory_junctions(self):
@@ -609,9 +621,9 @@ class WmoleBehaviorTests(unittest.TestCase):
             self.assertFalse(truncated)
 
             cache: dict = {}
-            with mock.patch.object(mole, "dir_size",
-                                   side_effect=lambda p, **kw: (
-                                       kw["on_truncated"](), 10)[1]):
+            with mock.patch.object(
+                mole, "dir_size", side_effect=lambda p, **kw: (kw["on_truncated"](), 10)[1]
+            ):
                 size, truncated = mole.sized_dir(root, cache, max_seconds=0.01)
             self.assertTrue(truncated)
             # A lower bound must never be cached as if it were the real size.
@@ -645,6 +657,7 @@ class WmoleBehaviorTests(unittest.TestCase):
 
     def test_purge_scan_streams_items_and_honours_cancel(self):
         import threading
+
         with tempfile.TemporaryDirectory() as td:
             for name in ("one", "two", "three"):
                 nm = Path(td) / name / "node_modules"
@@ -653,8 +666,11 @@ class WmoleBehaviorTests(unittest.TestCase):
 
             events = []
             cancel = threading.Event()
-            mole._serve_scan({"id": "s1", "mode": "purge", "paths": [td],
-                              "no_cache": True}, events.append, cancel)
+            mole._serve_scan(
+                {"id": "s1", "mode": "purge", "paths": [td], "no_cache": True},
+                events.append,
+                cancel,
+            )
 
             kinds = [e["ev"] for e in events]
             self.assertIn("item", kinds)
@@ -667,8 +683,11 @@ class WmoleBehaviorTests(unittest.TestCase):
 
             events.clear()
             cancel.set()
-            mole._serve_scan({"id": "s2", "mode": "purge", "paths": [td],
-                              "no_cache": True}, events.append, cancel)
+            mole._serve_scan(
+                {"id": "s2", "mode": "purge", "paths": [td], "no_cache": True},
+                events.append,
+                cancel,
+            )
             self.assertTrue(events[-1].get("cancelled"))
 
     def test_size_cache_roundtrip_and_invalidation(self):
@@ -688,12 +707,15 @@ class WmoleBehaviorTests(unittest.TestCase):
                 self.assertIsNone(mole.cache_get(reloaded, target, mtime + 10))
 
     def test_should_redraw_throttles_idle_and_allows_active(self):
-        self.assertTrue(mole.should_redraw(last_draw=0.0, now=1.0,
-                                            scanner_active=True, min_interval=0.08))
-        self.assertFalse(mole.should_redraw(last_draw=1.0, now=1.02,
-                                            scanner_active=True, min_interval=0.08))
-        self.assertFalse(mole.should_redraw(last_draw=0.0, now=100.0,
-                                            scanner_active=False, min_interval=0.08))
+        self.assertTrue(
+            mole.should_redraw(last_draw=0.0, now=1.0, scanner_active=True, min_interval=0.08)
+        )
+        self.assertFalse(
+            mole.should_redraw(last_draw=1.0, now=1.02, scanner_active=True, min_interval=0.08)
+        )
+        self.assertFalse(
+            mole.should_redraw(last_draw=0.0, now=100.0, scanner_active=False, min_interval=0.08)
+        )
 
     def test_scanner_parallel_sizes_clean_categories(self):
         with tempfile.TemporaryDirectory() as td:
@@ -719,8 +741,9 @@ class WmoleBehaviorTests(unittest.TestCase):
                 sc1.run()
                 self.assertTrue(cache_file.exists())
 
-                with mock.patch.object(mole, "dir_size",
-                                       side_effect=AssertionError("should be cached")):
+                with mock.patch.object(
+                    mole, "dir_size", side_effect=AssertionError("should be cached")
+                ):
                     sc2 = mole.Scanner(profile="purge", roots=[Path(td)])
                     sc2.run()
                 total = sum(c.total for c in sc2.categories)
@@ -749,8 +772,10 @@ class WmoleBehaviorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             f = Path(td) / "keep.txt"
             f.write_bytes(b"data")
-            with mock.patch.object(mole, "send2trash", None), \
-                 mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": False}):
+            with (
+                mock.patch.object(mole, "send2trash", None),
+                mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": False}),
+            ):
                 err = mole.delete_path(f, use_trash=True, dry_run=False)
             self.assertIsNotNone(err)
             self.assertTrue(f.exists())  # must NOT be permanently deleted
@@ -762,10 +787,12 @@ class WmoleBehaviorTests(unittest.TestCase):
             source.mkdir()
             (source / "data.txt").write_text("safe", encoding="utf-8")
             vault = root / "vault"
-            with mock.patch.object(mole, "QUARANTINE_DIR", vault), \
-                 mock.patch.object(mole, "QUARANTINE_INDEX", vault / "index.json"), \
-                 mock.patch.object(mole, "git_delete_risk", return_value=""), \
-                 mock.patch.object(mole, "log_operation"):
+            with (
+                mock.patch.object(mole, "QUARANTINE_DIR", vault),
+                mock.patch.object(mole, "QUARANTINE_INDEX", vault / "index.json"),
+                mock.patch.object(mole, "git_delete_risk", return_value=""),
+                mock.patch.object(mole, "log_operation"),
+            ):
                 self.assertIsNone(mole.quarantine_path(source, size=4))
                 self.assertFalse(source.exists())
                 entry = mole._quarantine_entries()[0]
@@ -797,14 +824,18 @@ class WmoleBehaviorTests(unittest.TestCase):
             root = Path(td)
             log = root / "security.jsonl"
             key = root / "security.key"
-            with mock.patch.object(mole, "SECURITY_LOG_FILE", log), \
-                 mock.patch.object(mole, "SECURITY_KEY_FILE", key), \
-                 mock.patch.object(mole, "WMOLE_DIR", root):
+            with (
+                mock.patch.object(mole, "SECURITY_LOG_FILE", log),
+                mock.patch.object(mole, "SECURITY_KEY_FILE", key),
+                mock.patch.object(mole, "WMOLE_DIR", root),
+            ):
                 mole.log_security_event("test", {"ok": True})
                 rows, valid = mole.read_security_log()
                 self.assertTrue(valid)
                 self.assertEqual(rows[0]["event"], "test")
-                log.write_text(log.read_text(encoding="utf-8").replace("test", "evil"), encoding="utf-8")
+                log.write_text(
+                    log.read_text(encoding="utf-8").replace("test", "evil"), encoding="utf-8"
+                )
                 _, valid = mole.read_security_log()
                 self.assertFalse(valid)
 
@@ -813,9 +844,19 @@ class WmoleBehaviorTests(unittest.TestCase):
             root = Path(td)
             (root / "package.json").write_text('{"name":"demo"}', encoding="utf-8")
             (root / "package-lock.json").write_text('{"lockfileVersion":3}', encoding="utf-8")
-            with mock.patch.object(mole, "_run_audit", return_value={
-                "tool": "npm", "status": "ok", "code": 0, "output": "{}",
-            }), mock.patch.object(mole, "log_security_event"):
+            with (
+                mock.patch.object(
+                    mole,
+                    "_run_audit",
+                    return_value={
+                        "tool": "npm",
+                        "status": "ok",
+                        "code": 0,
+                        "output": "{}",
+                    },
+                ),
+                mock.patch.object(mole, "log_security_event"),
+            ):
                 result = mole.supply_chain_audit(root)
             self.assertEqual(len(result["sbom"]), 2)
             self.assertEqual(result["audits"][0]["status"], "ok")
@@ -823,10 +864,16 @@ class WmoleBehaviorTests(unittest.TestCase):
     def test_process_protection_blocks_configured_developer_process(self):
         fake_proc = mock.Mock()
         fake_proc.name.return_value = "Code.exe"
-        with mock.patch.object(mole.psutil, "Process", return_value=fake_proc), \
-             mock.patch.object(mole, "load_config", return_value={
-                 "protected_processes": ["code.exe"],
-             }):
+        with (
+            mock.patch.object(mole.psutil, "Process", return_value=fake_proc),
+            mock.patch.object(
+                mole,
+                "load_config",
+                return_value={
+                    "protected_processes": ["code.exe"],
+                },
+            ),
+        ):
             self.assertIn("protected developer process", mole.process_protection_reason(42))
 
     def test_is_leftover_match_is_strict(self):
@@ -859,12 +906,18 @@ class WmoleBehaviorTests(unittest.TestCase):
         # high-risk actions must never have been executed
         self.assertTrue(all(r["result"] != "ran" for r in highs))
 
+
 class DoctorReportTests(unittest.TestCase):
     def test_doctor_report_rows_follow_the_check_schema(self):
-        with mock.patch.object(mole, "_tool_version",
-                               side_effect=lambda name, **kw: mole._doctor_row(name, "unavailable", "stub")), \
-             mock.patch.object(mole, "_doctor_caches", return_value=[]), \
-             mock.patch.object(mole, "_doctor_wmole_state", return_value=[]):
+        with (
+            mock.patch.object(
+                mole,
+                "_tool_version",
+                side_effect=lambda name, **kw: mole._doctor_row(name, "unavailable", "stub"),
+            ),
+            mock.patch.object(mole, "_doctor_caches", return_value=[]),
+            mock.patch.object(mole, "_doctor_wmole_state", return_value=[]),
+        ):
             report = mole.doctor_report()
 
         self.assertIn("checks", report)
@@ -896,8 +949,11 @@ class DoctorReportTests(unittest.TestCase):
 
     def test_cli_doctor_json_is_machine_readable(self):
         buf = io.StringIO()
-        stub = {"checks": [{"check": "x", "status": "ok", "detail": "d"}],
-                "summary": {"ok": 1}, "healthy": True}
+        stub = {
+            "checks": [{"check": "x", "status": "ok", "detail": "d"}],
+            "summary": {"ok": 1},
+            "healthy": True,
+        }
         with mock.patch.object(mole, "doctor_report", return_value=stub):
             with contextlib.redirect_stdout(buf):
                 mole.cli_doctor(json_out=True)
@@ -920,8 +976,12 @@ class ProjectRcTests(unittest.TestCase):
 
     def test_load_project_rc_parses_known_keys(self):
         with tempfile.TemporaryDirectory() as td:
-            root = self._repo(td, json.dumps(
-                {"purge": ["dist", "node_modules"], "keep": ["packages/*/dist"], "max_depth": 4}))
+            root = self._repo(
+                td,
+                json.dumps(
+                    {"purge": ["dist", "node_modules"], "keep": ["packages/*/dist"], "max_depth": 4}
+                ),
+            )
             rc = mole.load_project_rc(root)
         self.assertEqual(rc["purge"], ["dist", "node_modules"])
         self.assertEqual(rc["keep"], ["packages/*/dist"])
@@ -1002,7 +1062,9 @@ class UndoTests(unittest.TestCase):
 
     def test_cli_undo_reports_restore_failure(self):
         buf = io.StringIO()
-        with mock.patch.object(mole, "restore_quarantine", return_value="original path already exists"):
+        with mock.patch.object(
+            mole, "restore_quarantine", return_value="original path already exists"
+        ):
             with contextlib.redirect_stdout(buf):
                 mole.cli_undo(entry_id="abc123", json_out=True)
         data = json.loads(buf.getvalue())
@@ -1019,8 +1081,10 @@ class GitHookTests(unittest.TestCase):
     def test_frozen_hook_command_omits_script_path(self):
         # PyInstaller build'inde __file__ geçici çıkarma dizinini gösterir ve
         # süreç bitince silinir; hook'a yazılırsa kalıcı olarak bozulur.
-        with mock.patch.object(mole.sys, "frozen", True, create=True), \
-                mock.patch.object(mole.sys, "executable", r"C:\Program Files\wmole\wmole.exe"):
+        with (
+            mock.patch.object(mole.sys, "frozen", True, create=True),
+            mock.patch.object(mole.sys, "executable", r"C:\Program Files\wmole\wmole.exe"),
+        ):
             command = mole._hook_command()
         self.assertIn("wmole.exe", command)
         self.assertNotIn("mole.py", command)
@@ -1033,8 +1097,10 @@ class GitHookTests(unittest.TestCase):
     def test_installed_hook_body_uses_hook_command(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)
-            with mock.patch.object(mole, "log_security_event"), \
-                    mock.patch.object(mole, "_hook_command", return_value='"X.exe"'):
+            with (
+                mock.patch.object(mole, "log_security_event"),
+                mock.patch.object(mole, "_hook_command", return_value='"X.exe"'),
+            ):
                 mole.install_pre_commit_hook(root)
             body = mole.hook_path(root).read_text(encoding="utf-8")
         self.assertIn('"X.exe" hook --run', body)
@@ -1145,8 +1211,18 @@ class PortsProjectTests(unittest.TestCase):
         self.assertEqual(mole.process_project_name(0), "")
 
     def test_cli_ports_json_carries_the_project_field(self):
-        rows = [{"proto": "TCP", "ip": "127.0.0.1", "port": 3000, "pid": 10,
-                 "process": "node.exe", "exe": "", "project": "my-repo", "hint": ""}]
+        rows = [
+            {
+                "proto": "TCP",
+                "ip": "127.0.0.1",
+                "port": 3000,
+                "pid": 10,
+                "process": "node.exe",
+                "exe": "",
+                "project": "my-repo",
+                "hint": "",
+            }
+        ]
         buf = io.StringIO()
         with mock.patch.object(mole, "list_dev_ports", return_value=rows):
             with contextlib.redirect_stdout(buf):
@@ -1154,8 +1230,18 @@ class PortsProjectTests(unittest.TestCase):
         self.assertEqual(json.loads(buf.getvalue())["ports"][0]["project"], "my-repo")
 
     def test_cli_ports_text_output_shows_the_project_column(self):
-        rows = [{"proto": "TCP", "ip": "127.0.0.1", "port": 3000, "pid": 10,
-                 "process": "node.exe", "exe": "", "project": "my-repo", "hint": "Next.js"}]
+        rows = [
+            {
+                "proto": "TCP",
+                "ip": "127.0.0.1",
+                "port": 3000,
+                "pid": 10,
+                "process": "node.exe",
+                "exe": "",
+                "project": "my-repo",
+                "hint": "Next.js",
+            }
+        ]
         buf = io.StringIO()
         with mock.patch.object(mole, "list_dev_ports", return_value=rows):
             with contextlib.redirect_stdout(buf):
@@ -1212,6 +1298,231 @@ class DuplicateHashTests(unittest.TestCase):
             a.write_bytes(b"a" * 500)
             b.write_bytes(b"b" * 500)
             self.assertEqual(mole._duplicate_groups([a, b]), {})
+
+    # ---- regressions: updater asset handling ----
+    def test_setup_exe_is_recognised_as_installer(self):
+        # `setup$` never matched "...-setup.exe": the installer was copied over wmole.exe.
+        self.assertTrue(mole._is_installer_asset("wmole-0.7.0-setup.exe"))
+        self.assertTrue(mole._is_installer_asset("wmole.msi"))
+        self.assertFalse(mole._is_installer_asset("wmole.exe"))
+        self.assertFalse(mole._is_installer_asset("wmole-0.7.0-setup.exe.sha256"))
+
+    def test_update_asset_prefers_own_exe_and_never_picks_checksum(self):
+        assets = [
+            {"name": "wmole-0.7.0-setup.exe.sha256"},
+            {"name": "wmole-0.7.0-setup.exe"},
+            {"name": "wmole.exe"},
+        ]
+        with mock.patch.object(mole.sys, "executable", r"C:\tools\wmole.exe"):
+            self.assertEqual(mole._pick_update_asset(assets)["name"], "wmole.exe")
+        with mock.patch.object(mole.sys, "executable", r"C:\tools\other.exe"):
+            self.assertEqual(mole._pick_update_asset(assets)["name"], "wmole-0.7.0-setup.exe")
+        self.assertIsNone(mole._pick_installer_asset([{"name": "notes.sha256"}]))
+
+    def test_sidecar_never_applies_pending_update(self):
+        with (
+            mock.patch.object(mole.sys, "frozen", True, create=True),
+            mock.patch.object(mole.sys, "argv", ["wmole.exe", "serve"]),
+            mock.patch.object(mole, "_launch_updated") as launch,
+        ):
+            self.assertFalse(mole.apply_pending_update())
+        launch.assert_not_called()
+
+    # ---- regressions: quarantine must never lose data ----
+    def _vault(self, root):
+        vault = root / "vault"
+        return (
+            mock.patch.object(mole, "QUARANTINE_DIR", vault),
+            mock.patch.object(mole, "QUARANTINE_INDEX", vault / "index.json"),
+            mock.patch.object(mole, "git_delete_risk", return_value=""),
+            mock.patch.object(mole, "log_operation"),
+            mock.patch.object(mole, "log_security_event"),
+        )
+
+    def test_quarantine_of_folder_with_locked_file_leaves_source_intact(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "cache"
+            source.mkdir()
+            for i in range(3):
+                (source / f"f{i}.txt").write_text("data", encoding="utf-8")
+            with contextlib.ExitStack() as stack:
+                for patch in self._vault(root):
+                    stack.enter_context(patch)
+                with open(source / "locked.txt", "w") as handle:
+                    handle.write("busy")
+                    handle.flush()
+                    error = mole.quarantine_path(source, size=1)
+                self.assertIsNotNone(error)
+                self.assertEqual(mole._quarantine_entries(), [])
+            self.assertEqual(
+                sorted(p.name for p in source.iterdir()),
+                ["f0.txt", "f1.txt", "f2.txt", "locked.txt"],
+            )
+
+    def test_expired_entry_with_blank_id_does_not_wipe_quarantine(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with contextlib.ExitStack() as stack:
+                for patch in self._vault(root):
+                    stack.enter_context(patch)
+                keep = root / "vault" / "999-abcd1234" / "keep.txt"
+                keep.parent.mkdir(parents=True)
+                keep.write_text("x", encoding="utf-8")
+                mole._save_quarantine_entries(
+                    [
+                        {"id": "", "created": 1},
+                        {"id": "..", "created": 1},
+                        {"id": "999-abcd1234", "created": 9_999_999_999},
+                    ]
+                )
+                self.assertEqual(mole.purge_expired_quarantine(), 2)
+                self.assertTrue(keep.exists())
+                self.assertEqual(len(mole._quarantine_entries()), 1)
+
+    # ---- regressions: destructive suggestions ----
+    def test_critical_and_own_processes_are_never_killable(self):
+        fake_proc = mock.Mock()
+        fake_proc.name.return_value = "csrss.exe"
+        with (
+            mock.patch.object(mole.psutil, "Process", return_value=fake_proc),
+            mock.patch.object(mole, "load_config", return_value={}),
+        ):
+            self.assertIn("critical", mole.process_protection_reason(4242))
+        self.assertIn("critical", mole.process_protection_reason(os.getpid()))
+        self.assertEqual(mole.kill_pid(os.getpid())[0], False)
+
+    def test_leftovers_skip_vendor_folder_shared_with_other_apps(self):
+        with tempfile.TemporaryDirectory() as td:
+            appdata = Path(td)
+            (appdata / "Microsoft").mkdir()
+            (appdata / "Code").mkdir()
+            app = {"name": "Code", "publisher": "Microsoft Corporation"}
+            others = [app, {"name": "Edge", "publisher": "Microsoft Corporation"}]
+            with mock.patch.object(mole, "list_installed_apps", return_value=others):
+                shared = {i.path.name for i in mole.find_leftover_candidates(app, roots=[appdata])}
+            with mock.patch.object(mole, "list_installed_apps", return_value=[app]):
+                alone = {i.path.name for i in mole.find_leftover_candidates(app, roots=[appdata])}
+        self.assertEqual(shared, {"Code"})
+        self.assertEqual(alone, {"Code", "Microsoft"})
+
+    def test_only_contents_of_system_cache_dirs_are_deletable(self):
+        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\Temp")))
+        self.assertFalse(mole.is_protected_path(Path(r"C:\Windows\Temp\junk.tmp")))
+        self.assertFalse(
+            mole.is_protected_path(Path(r"C:\Windows\SoftwareDistribution\Download\abc"))
+        )
+        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\Temporary")))
+        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\System32\drivers")))
+
+    def test_system_temp_category_lists_children_not_the_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "a.tmp").write_text("x", encoding="utf-8")
+            (Path(td) / "sub").mkdir()
+            items = mole.fixed_category_items("win-temp", Path(td), selected=True)
+        self.assertEqual(sorted(i.path.name for i in items), ["a.tmp", "sub"])
+
+    def test_other_drive_goes_to_recycle_bin_not_quarantine(self):
+        with (
+            mock.patch.object(mole, "QUARANTINE_DIR", Path(r"C:\Users\x\.wmole\quarantine")),
+            mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": True}),
+        ):
+            self.assertTrue(mole._use_quarantine(Path(r"C:\proj\node_modules")))
+            self.assertFalse(mole._use_quarantine(Path(r"D:\proj\node_modules")))
+        with mock.patch.object(mole, "load_config", return_value={"quarantine_enabled": False}):
+            self.assertFalse(mole._use_quarantine(Path(r"C:\proj\node_modules")))
+
+    def test_empty_quarantine_removes_items_and_index(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "cache"
+            source.mkdir()
+            (source / "f.txt").write_text("data", encoding="utf-8")
+            with contextlib.ExitStack() as stack:
+                for patch in self._vault(root):
+                    stack.enter_context(patch)
+                self.assertIsNone(mole.quarantine_path(source, size=4))
+                self.assertEqual(mole.empty_quarantine(), {"removed": 1, "bytes": 4})
+                self.assertEqual(mole._quarantine_entries(), [])
+                self.assertEqual([p.name for p in (root / "vault").iterdir()], ["index.json"])
+
+    def test_download_rejects_wrong_checksum_and_deletes_file(self):
+        body = b"installer-bytes"
+        good = mole.hashlib.sha256(body).hexdigest()
+
+        def fake_urlopen(*_a, **_k):
+            resp = mock.MagicMock()
+            resp.__enter__.return_value = resp
+            resp.headers = {"Content-Length": str(len(body))}
+            resp.read.side_effect = [body, b""]
+            return resp
+
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "wmole.exe"
+            with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                mole._download("https://example.invalid/x", dest, sha256=good)
+                self.assertEqual(mole._sha256_file(dest), good)
+                with self.assertRaises(ValueError):
+                    mole._download("https://example.invalid/x", dest, sha256="0" * 64)
+            self.assertFalse(dest.exists())
+
+    def test_asset_sha256_parses_only_valid_github_digest(self):
+        self.assertEqual(mole._asset_sha256({"digest": "sha256:" + "AB" * 32}), "ab" * 32)
+        self.assertEqual(mole._asset_sha256({"digest": "md5:abcd"}), "")
+        self.assertEqual(mole._asset_sha256({}), "")
+
+    def test_tampered_staged_update_is_not_launched(self):
+        with tempfile.TemporaryDirectory() as td:
+            staged = Path(td) / "wmole.exe"
+            staged.write_bytes(b"evil")
+            pending = Path(td) / "pending.json"
+            pending.write_text(
+                json.dumps(
+                    {
+                        "version": "v99.0.0",
+                        "name": "wmole.exe",
+                        "path": str(staged),
+                        "sha256": "0" * 64,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(mole.sys, "frozen", True, create=True),
+                mock.patch.object(mole.sys, "argv", ["wmole.exe", "status"]),
+                mock.patch.object(mole, "PENDING_UPDATE_FILE", pending),
+                mock.patch.object(mole, "_auto_update_disabled", return_value=False),
+                mock.patch.object(mole, "_launch_updated") as launch,
+            ):
+                self.assertFalse(mole.apply_pending_update())
+            launch.assert_not_called()
+            self.assertFalse(pending.exists())
+
+    def test_startup_toggle_writes_startup_approved_flag(self):
+        import winreg
+
+        name = "wmole-test-entry"
+        sub = mole._APPROVED_KEY + r"\Run"
+        try:
+            with mock.patch.object(mole, "log_operation"):
+                mole.set_startup_enabled("HKCU\\Run", name, False)
+                self.assertFalse(mole._startup_enabled("HKCU\\Run", name))
+                mole.set_startup_enabled("HKCU\\Run", name, True)
+                self.assertTrue(mole._startup_enabled("HKCU\\Run", name))
+                with self.assertRaises(OSError):
+                    mole.set_startup_enabled("Nowhere", name, False)
+        finally:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, sub, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.DeleteValue(key, name)
+
+    def test_jetbrains_category_offers_only_cache_dirs(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "Toolbox" / "apps").mkdir(parents=True)
+            (base / "PyCharm2025.1" / "caches").mkdir(parents=True)
+            (base / "PyCharm2025.1" / "plugins").mkdir()
+            items = mole.fixed_category_items("jetbrains", base, selected=True)
+        self.assertEqual([i.path.name for i in items], ["caches"])
 
 
 if __name__ == "__main__":

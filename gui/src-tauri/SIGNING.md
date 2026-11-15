@@ -46,6 +46,17 @@ release asset'i olarak yüklenmelidir. Uygulama yardımcı dosya adlarını setu
 adından türetir (`<setup adı> + ".minisig"` / `+ ".sha256"`), bu yüzden adlandırma birebir
 olmalıdır.
 
+## 2b. Yerel release (scripts/release.ps1)
+
+CI yoksa `release.ps1` imzayı kendisi atar; secret key dosyasının yolunu ver:
+
+```powershell
+$env:WMOLE_MINISIGN_KEY = "C:\guvenli\yer\wmole.key"
+.\scripts\release.ps1 -Version X.Y.Z
+```
+
+Değişken tanımlı değilse betik uyarı verip imzasız yayınlar.
+
 ## 3. Yerel doğrulama
 
 ```sh
