@@ -56,14 +56,21 @@ pub fn run() {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 while let Some(event) = rx.recv().await {
-                    if let CommandEvent::Stdout(bytes) = event {
-                        let text = String::from_utf8_lossy(&bytes);
-                        for line in text.lines() {
-                            if line.trim().is_empty() {
-                                continue;
+                    match event {
+                        CommandEvent::Stdout(bytes) => {
+                            let text = String::from_utf8_lossy(&bytes);
+                            for line in text.lines() {
+                                if line.trim().is_empty() {
+                                    continue;
+                                }
+                                let _ = handle.emit("sidecar-event", line.to_string());
                             }
-                            let _ = handle.emit("sidecar-event", line.to_string());
                         }
+                        // Sidecar öldü: UI'daki bekleyen istekler sonsuza dek asılı kalmasın.
+                        CommandEvent::Terminated(_) => {
+                            let _ = handle.emit("sidecar-exit", ());
+                        }
+                        _ => {}
                     }
                 }
             });

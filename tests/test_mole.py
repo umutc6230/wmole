@@ -1213,6 +1213,109 @@ class DuplicateHashTests(unittest.TestCase):
             b.write_bytes(b"b" * 500)
             self.assertEqual(mole._duplicate_groups([a, b]), {})
 
+    # ---- regressions: updater asset handling ----
+    def test_setup_exe_is_recognised_as_installer(self):
+        # `setup$` never matched "...-setup.exe": the installer was copied over wmole.exe.
+        self.assertTrue(mole._is_installer_asset("wmole-0.7.0-setup.exe"))
+        self.assertTrue(mole._is_installer_asset("wmole.msi"))
+        self.assertFalse(mole._is_installer_asset("wmole.exe"))
+        self.assertFalse(mole._is_installer_asset("wmole-0.7.0-setup.exe.sha256"))
+
+    def test_update_asset_prefers_own_exe_and_never_picks_checksum(self):
+        assets = [{"name": "wmole-0.7.0-setup.exe.sha256"},
+                  {"name": "wmole-0.7.0-setup.exe"}, {"name": "wmole.exe"}]
+        with mock.patch.object(mole.sys, "executable", r"C:\tools\wmole.exe"):
+            self.assertEqual(mole._pick_update_asset(assets)["name"], "wmole.exe")
+        with mock.patch.object(mole.sys, "executable", r"C:\tools\other.exe"):
+            self.assertEqual(mole._pick_update_asset(assets)["name"], "wmole-0.7.0-setup.exe")
+        self.assertIsNone(mole._pick_installer_asset([{"name": "notes.sha256"}]))
+
+    def test_sidecar_never_applies_pending_update(self):
+        with mock.patch.object(mole.sys, "frozen", True, create=True), \
+             mock.patch.object(mole.sys, "argv", ["wmole.exe", "serve"]), \
+             mock.patch.object(mole, "_launch_updated") as launch:
+            self.assertFalse(mole.apply_pending_update())
+        launch.assert_not_called()
+
+    # ---- regressions: quarantine must never lose data ----
+    def _vault(self, root):
+        vault = root / "vault"
+        return (mock.patch.object(mole, "QUARANTINE_DIR", vault),
+                mock.patch.object(mole, "QUARANTINE_INDEX", vault / "index.json"),
+                mock.patch.object(mole, "git_delete_risk", return_value=""),
+                mock.patch.object(mole, "log_operation"),
+                mock.patch.object(mole, "log_security_event"))
+
+    def test_quarantine_of_folder_with_locked_file_leaves_source_intact(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "cache"
+            source.mkdir()
+            for i in range(3):
+                (source / f"f{i}.txt").write_text("data", encoding="utf-8")
+            with contextlib.ExitStack() as stack:
+                for patch in self._vault(root):
+                    stack.enter_context(patch)
+                with open(source / "locked.txt", "w") as handle:
+                    handle.write("busy")
+                    handle.flush()
+                    error = mole.quarantine_path(source, size=1)
+                self.assertIsNotNone(error)
+                self.assertEqual(mole._quarantine_entries(), [])
+            self.assertEqual(sorted(p.name for p in source.iterdir()),
+                             ["f0.txt", "f1.txt", "f2.txt", "locked.txt"])
+
+    def test_expired_entry_with_blank_id_does_not_wipe_quarantine(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with contextlib.ExitStack() as stack:
+                for patch in self._vault(root):
+                    stack.enter_context(patch)
+                keep = root / "vault" / "999-abcd1234" / "keep.txt"
+                keep.parent.mkdir(parents=True)
+                keep.write_text("x", encoding="utf-8")
+                mole._save_quarantine_entries([
+                    {"id": "", "created": 1},
+                    {"id": "..", "created": 1},
+                    {"id": "999-abcd1234", "created": 9_999_999_999},
+                ])
+                self.assertEqual(mole.purge_expired_quarantine(), 2)
+                self.assertTrue(keep.exists())
+                self.assertEqual(len(mole._quarantine_entries()), 1)
+
+    # ---- regressions: destructive suggestions ----
+    def test_critical_and_own_processes_are_never_killable(self):
+        fake_proc = mock.Mock()
+        fake_proc.name.return_value = "csrss.exe"
+        with mock.patch.object(mole.psutil, "Process", return_value=fake_proc), \
+             mock.patch.object(mole, "load_config", return_value={}):
+            self.assertIn("critical", mole.process_protection_reason(4242))
+        self.assertIn("critical", mole.process_protection_reason(os.getpid()))
+        self.assertEqual(mole.kill_pid(os.getpid())[0], False)
+
+    def test_leftovers_skip_vendor_folder_shared_with_other_apps(self):
+        with tempfile.TemporaryDirectory() as td:
+            appdata = Path(td)
+            (appdata / "Microsoft").mkdir()
+            (appdata / "Code").mkdir()
+            app = {"name": "Code", "publisher": "Microsoft Corporation"}
+            others = [app, {"name": "Edge", "publisher": "Microsoft Corporation"}]
+            with mock.patch.object(mole, "list_installed_apps", return_value=others):
+                shared = {i.path.name for i in mole.find_leftover_candidates(app, roots=[appdata])}
+            with mock.patch.object(mole, "list_installed_apps", return_value=[app]):
+                alone = {i.path.name for i in mole.find_leftover_candidates(app, roots=[appdata])}
+        self.assertEqual(shared, {"Code"})
+        self.assertEqual(alone, {"Code", "Microsoft"})
+
+    def test_jetbrains_category_offers_only_cache_dirs(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "Toolbox" / "apps").mkdir(parents=True)
+            (base / "PyCharm2025.1" / "caches").mkdir(parents=True)
+            (base / "PyCharm2025.1" / "plugins").mkdir()
+            items = mole.fixed_category_items("jetbrains", base, selected=True)
+        self.assertEqual([i.path.name for i in items], ["caches"])
+
 
 if __name__ == "__main__":
     unittest.main()

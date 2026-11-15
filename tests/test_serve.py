@@ -40,6 +40,13 @@ class ServePingStatusTest(unittest.TestCase):
         self.assertTrue(any(e["id"] == "p1" and e["ev"] == "done" and e["ok"]
                             for e in events), msg=err)
 
+    def test_non_object_json_does_not_kill_the_loop(self):
+        # `[1]` is valid JSON but has no .get(); it used to crash serve.
+        events, err = _run_serve([[1], {"id": "p2", "op": "ping"}])
+        self.assertTrue(any(e["ev"] == "error" and e["code"] == "bad_json" for e in events), msg=err)
+        self.assertTrue(any(e["id"] == "p2" and e["ev"] == "done" and e["ok"]
+                            for e in events), msg=err)
+
     def test_status(self):
         events, err = _run_serve([{"id": "s1", "op": "status"}])
         done = [e for e in events if e["id"] == "s1" and e["ev"] == "done"]

@@ -232,3 +232,7 @@ py -m unittest discover -s tests
 - Expand leftover matching precision and confidence scoring.
 - Add optional deeper Docker/WSL cleanup profiles.
 - Improve completion setup UX across shells.
+
+## Product Owner
+
+Product Owner: Umut Çelik - [X](https://x.com/umutc6230) · [GitHub](https://github.com/umutc6230)

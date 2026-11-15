@@ -97,7 +97,7 @@ else:  # pragma: no cover
 
 # ---------- Version ----------
 __version__ = "0.8.1"
-GITHUB_REPO = "palamut62/wmole"
+GITHUB_REPO = "umutc6230/wmole"
 AUTO_UPDATE_INTERVAL = 6 * 3600  # seconds between background checks
 
 # ---------- Paths / helpers ----------
@@ -789,6 +789,9 @@ def git_delete_risk(path: Path) -> str:
     return ""
 
 
+_QUARANTINE_LOCK = threading.Lock()
+
+
 def _quarantine_entries() -> list[dict]:
     try:
         data = json.loads(QUARANTINE_INDEX.read_text(encoding="utf-8"))
@@ -799,7 +802,40 @@ def _quarantine_entries() -> list[dict]:
 
 def _save_quarantine_entries(entries: list[dict]) -> None:
     QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
-    QUARANTINE_INDEX.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Atomic replace: a crash mid-write must not lose the only restore index.
+    tmp = QUARANTINE_INDEX.with_suffix(".tmp")
+    tmp.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, QUARANTINE_INDEX)
+
+
+def _move_to_quarantine(path: Path, target: Path) -> Optional[str]:
+    """Move without ever leaving a half-deleted source behind.
+
+    shutil.move() falls back to copy + rmtree when rename fails. With a locked
+    file inside, that rmtree deleted everything else and then raised, so the
+    caller threw the copy away too: data gone, nothing to restore.
+    Same volume: a plain rename is all-or-nothing. Other volume: copy first and
+    only delete the source once the copy is complete; if that delete is cut
+    short the copy stays restorable and the reason is returned.
+    """
+    try:
+        os.rename(path, target)
+        return None
+    except OSError:
+        same_volume = (os.path.splitdrive(os.path.abspath(path))[0].lower()
+                       == os.path.splitdrive(os.path.abspath(target))[0].lower())
+        if same_volume:
+            raise
+    is_tree = path.is_dir() and not _is_reparse_point(path)
+    if is_tree:
+        shutil.copytree(path, target, symlinks=True)
+    else:
+        shutil.copy2(path, target, follow_symlinks=False)
+    try:
+        shutil.rmtree(path) if is_tree else path.unlink()
+    except OSError as exc:
+        return str(exc)
+    return None
 
 
 def quarantine_path(path: Path, size: int = 0) -> str | None:
@@ -812,20 +848,26 @@ def quarantine_path(path: Path, size: int = 0) -> str | None:
     entry_id = f"{int(time.time())}-{secrets.token_hex(4)}"
     target_dir = QUARANTINE_DIR / entry_id
     target = target_dir / path.name
+    def record() -> None:
+        with _QUARANTINE_LOCK:
+            entries = _quarantine_entries()
+            entries.append({
+                "id": entry_id, "original": str(path), "stored": str(target),
+                "size": size, "created": int(time.time()), "name": path.name,
+            })
+            _save_quarantine_entries(entries)
+
     try:
         target_dir.mkdir(parents=True, exist_ok=False)
-        shutil.move(str(path), str(target))
-        entries = _quarantine_entries()
-        entries.append({
-            "id": entry_id, "original": str(path), "stored": str(target),
-            "size": size, "created": int(time.time()), "name": path.name,
-        })
-        _save_quarantine_entries(entries)
-        log_operation("delete-quarantine", path, size=size, result=entry_id)
-        return None
+        leftover = _move_to_quarantine(path, target)
     except (OSError, shutil.Error) as exc:
         shutil.rmtree(target_dir, ignore_errors=True)
         return f"quarantine: {exc}"
+    record()
+    log_operation("delete-quarantine", path, size=size, result=entry_id)
+    if leftover:
+        return f"quarantine: copy kept ({entry_id}) but source not fully removed: {leftover}"
+    return None
 
 
 def restore_quarantine(entry_id: str) -> str | None:
@@ -839,7 +881,9 @@ def restore_quarantine(entry_id: str) -> str | None:
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(destination))
-        _save_quarantine_entries([row for row in entries if row.get("id") != entry_id])
+        with _QUARANTINE_LOCK:
+            _save_quarantine_entries(
+                [row for row in _quarantine_entries() if row.get("id") != entry_id])
         shutil.rmtree(QUARANTINE_DIR / entry_id, ignore_errors=True)
         log_security_event("quarantine-restored", {"id": entry_id, "path": str(destination)})
         return None
@@ -848,19 +892,24 @@ def restore_quarantine(entry_id: str) -> str | None:
 
 
 def purge_expired_quarantine() -> int:
-    entries = _quarantine_entries()
     retention = max(1, int(load_config().get("quarantine_retention_days", 30))) * 86400
     cutoff = int(time.time()) - retention
     kept: list[dict] = []
     removed = 0
-    for entry in entries:
-        if int(entry.get("created", 0)) < cutoff:
-            shutil.rmtree(QUARANTINE_DIR / str(entry.get("id", "")), ignore_errors=True)
+    with _QUARANTINE_LOCK:
+        for entry in _quarantine_entries():
+            entry_id = str(entry.get("id", ""))
+            if int(entry.get("created", 0)) >= cutoff:
+                kept.append(entry)
+                continue
+            # A blank/odd id would resolve to the quarantine root (or outside it)
+            # and wipe every stored item; drop the row, touch nothing on disk.
+            if re.fullmatch(r"\d+-[0-9a-f]+", entry_id):
+                shutil.rmtree(QUARANTINE_DIR / entry_id, ignore_errors=True)
             removed += 1
-        else:
-            kept.append(entry)
+        if removed:
+            _save_quarantine_entries(kept)
     if removed:
-        _save_quarantine_entries(kept)
         log_security_event("quarantine-expired", {"removed": removed})
     return removed
 
@@ -1063,7 +1112,8 @@ FIXED_PATH_CATEGORIES = [
     ("crash-dumps",    "Crash dumps",         "%LOCALAPPDATA%\\CrashDumps",            LOCALAPPDATA / "CrashDumps",                                            True,  "💥"),
     # NEW developer-aware locations (mole-style)
     ("jetbrains",      "JetBrains caches",    "%LOCALAPPDATA%\\JetBrains",             LOCALAPPDATA / "JetBrains",                                             True,  "💡"),
-    ("vscode-storage", "VS Code workspace storage","%APPDATA%\\Code\\User\\workspaceStorage", APPDATA / "Code" / "User" / "workspaceStorage",                  True,  "🟦"),
+    # Holds per-workspace extension state (AI chat history, local history); not a cache.
+    ("vscode-storage", "VS Code workspace storage","%APPDATA%\\Code\\User\\workspaceStorage", APPDATA / "Code" / "User" / "workspaceStorage",                  False, "🟦"),
     ("vscode-cache",   "VS Code cache",       "%APPDATA%\\Code\\Cache",                APPDATA / "Code" / "Cache",                                             True,  "🟦"),
     ("puppeteer",      "Puppeteer Chromium",  "~\\.cache\\puppeteer",                  USER / ".cache" / "puppeteer",                                          False, "🎭"),
     ("playwright",     "Playwright browsers", "%LOCALAPPDATA%\\ms-playwright",         LOCALAPPDATA / "ms-playwright",                                         False, "🎭"),
@@ -1096,8 +1146,27 @@ def build_fixed_path_categories() -> List[tuple]:
 
 
 def fixed_category_items(key: str, path: Path, selected: bool) -> List[Item]:
+    out: List[Item] = []
+    if key == "user-temp":
+        # One item per child: the temp root itself always holds files in use, so
+        # deleting it as a single unit failed every time.
+        try:
+            return [Item(path=child, selected=selected) for child in path.iterdir()]
+        except OSError:
+            return out
+    if key == "jetbrains":
+        # JetBrains Toolbox installs the IDEs themselves under this folder, so
+        # only each product's cache/log dirs are offered, never the whole tree.
+        try:
+            products = [d for d in path.iterdir() if d.is_dir() and d.name.lower() != "toolbox"]
+        except OSError:
+            return out
+        for product in products:
+            for sub in ("caches", "log", "tmp", "index"):
+                if path_exists(product / sub):
+                    out.append(Item(path=product / sub, selected=selected))
+        return out
     if key == "firefox-cache":
-        out: List[Item] = []
         if path_exists(path):
             for profile in path.iterdir():
                 cache = profile / "cache2"
@@ -2550,7 +2619,7 @@ def _help_sections_tr() -> List[tuple]:
             "• T tuşu (henüz globalde değil, plan) → --dry-run önizleme",
             "• \\ tuşu Türkçe ↔ English geçişi (config'e yazılır)",
             "• Tarama büyük disklerde 1-2 dk sürebilir, animasyon aktiftir.",
-            "• Sorun bildirme: https://github.com/palamut62/wmole/issues",
+            "• Sorun bildirme: https://github.com/umutc6230/wmole/issues",
         ]),
     ]
 
@@ -2629,7 +2698,7 @@ def _help_sections_en() -> List[tuple]:
         ("Tips", [
             "• \\ toggles Turkish ↔ English (persisted in config).",
             "• Scans can take 1-2 min on large disks; animation indicates progress.",
-            "• Report issues: https://github.com/palamut62/wmole/issues",
+            "• Report issues: https://github.com/umutc6230/wmole/issues",
         ]),
     ]
 
@@ -4634,14 +4703,27 @@ def _serve_startup_disable(req: dict, emit, cancel) -> None:
         if location.endswith("Run"):
             import winreg
             hive = winreg.HKEY_CURRENT_USER if location.startswith("HKCU") else winreg.HKEY_LOCAL_MACHINE
-            key = winreg.OpenKey(hive, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE)
+            key = winreg.OpenKey(hive, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
+                                 winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE)
+            # The value is deleted, not disabled: log the command first so it
+            # can be put back by hand from operations.log.
+            command = winreg.QueryValueEx(key, name)[0]
             winreg.DeleteValue(key, name)
             winreg.CloseKey(key)
+            log_operation("startup-removed", Path(f"{location}\\{name}"), result=str(command))
             emit({"id": rid, "ev": "item_result", "path": name, "ok": True})
         elif location == "Startup Folder":
             err = delete_path(Path(req.get("path", "")), use_trash=True, dry_run=False)
             emit({"id": rid, "ev": "item_result", "path": name, "ok": err is None,
                   "error": err})
+            if err:
+                emit({"id": rid, "ev": "done", "ok": False})
+                return
+        else:
+            emit({"id": rid, "ev": "error", "code": "startup_failed",
+                  "message": f"unknown startup location: {location}"})
+            emit({"id": rid, "ev": "done", "ok": False})
+            return
         emit({"id": rid, "ev": "done", "ok": True})
     except OSError as exc:
         emit({"id": rid, "ev": "error", "code": "startup_failed", "message": str(exc)})
@@ -4662,7 +4744,8 @@ def _serve_processes_list(req: dict, emit, cancel) -> None:
             except (psutil.Error, OSError, KeyError):
                 continue
     procs.sort(key=lambda x: x["mem"], reverse=True)
-    protected_names = {str(v).lower() for v in load_config().get("protected_processes", [])}
+    protected_names = CRITICAL_PROCESSES | {
+        str(v).lower() for v in load_config().get("protected_processes", [])}
     for p in procs[:300]:
         emit({"id": rid, "ev": "item", "path": str(p["pid"]), "name": p["name"],
               "size": p["mem"], "kind": "process", "pid": p["pid"],
@@ -4792,7 +4875,7 @@ def scan_secrets(root: Path, cancel=None, max_files: int = 5000) -> dict:
                     match = pattern.search(line)
                     if match:
                         value = match.group(0)
-                        preview = value[:4] + "..." + value[-4:] if len(value) > 10 else "[redacted]"
+                        preview = value[:4] + "..." if len(value) > 10 else "[redacted]"
                         findings.append({
                             "type": kind, "path": str(path), "line": line_no,
                             "preview": preview, "severity": "high",
@@ -4998,6 +5081,8 @@ def cmd_serve() -> None:
         try:
             req = json.loads(raw)
         except json.JSONDecodeError:
+            req = None
+        if not isinstance(req, dict):  # valid JSON but not an object would crash the loop
             _serve_emit(out_lock, {"id": None, "ev": "error",
                                    "code": "bad_json", "message": raw[:200]})
             continue
@@ -5177,7 +5262,14 @@ def find_registry_leftover_candidates(app: dict) -> List[str]:
 def find_leftover_candidates(app: dict, roots: Optional[List[Path]] = None) -> List[Item]:
     name = (app.get("name") or "").strip()
     publisher = (app.get("publisher") or "").strip()
-    tokens = normalize_app_tokens(name, publisher)
+    # A vendor folder (AppData\\Local\\Microsoft, Google, JetBrains) is shared by
+    # every product of that vendor: only treat it as a leftover when this is the
+    # vendor's last installed app.
+    shared_vendor = publisher and any(
+        (row.get("publisher") or "").strip().lower() == publisher.lower()
+        and row.get("name") != app.get("name")
+        for row in list_installed_apps())
+    tokens = normalize_app_tokens(name) if shared_vendor else normalize_app_tokens(name, publisher)
     roots = roots or default_leftover_roots()
     out: List[Item] = []
     for root in roots:
@@ -5293,16 +5385,42 @@ def _pick_installer_asset(assets: List[dict]) -> Optional[dict]:
     for a in assets:
         if re.search(r"setup\.exe$", a.get("name", ""), re.IGNORECASE):
             return a
-    # Fall back to any .exe or .msi
+    # Fall back to any .exe or .msi. Never a non-executable asset (.sha256,
+    # .minisig): it would be launched or copied over the running exe.
     for a in assets:
         if re.search(r"\.(exe|msi)$", a.get("name", ""), re.IGNORECASE):
             return a
-    return assets[0]
+    return None
+
+
+def _pick_update_asset(assets: List[dict]) -> Optional[dict]:
+    """Asset that updates *this* exe.
+
+    A release asset carrying our own file name (the standalone `wmole.exe`) is a
+    drop-in replacement and wins. The `-setup.exe` asset is the GUI installer:
+    running it would install the desktop app and leave this exe untouched.
+    """
+    own = Path(sys.executable).name.lower()
+    for a in assets or []:
+        if a.get("name", "").lower() == own:
+            return a
+    return _pick_installer_asset(assets)
 
 
 def _is_installer_asset(name: str) -> bool:
-    """True if the asset name looks like an Inno Setup / MSI installer (not a raw exe)."""
-    return bool(re.search(r"(setup|installer|\.msi)$", name, re.IGNORECASE))
+    """True if the asset name looks like a setup/MSI installer (not a raw exe).
+
+    The suffix must be matched *with* its extension: the old `setup$` pattern
+    never matched `wmole-X.Y.Z-setup.exe`, so the installer was treated as a raw
+    exe and copied over the running wmole.exe.
+    """
+    return bool(re.search(r"(setup|installer)\.exe$|\.msi$", name, re.IGNORECASE))
+
+
+def _installer_args(name: str) -> List[str]:
+    if name.lower().endswith(".msi"):
+        return ["msiexec", "/i", name, "/qn", "/norestart"]
+    return [name, "/S"]  # releases ship the Tauri NSIS installer; /S = silent
 
 
 def _create_swap_batch(new_exe: Path, current_exe: Path) -> Path:
@@ -5363,9 +5481,8 @@ def _launch_updated(new_path: Path, asset_name: str, latest_tag: str) -> None:
                   f"{__version__} -> {latest_tag}")
 
     if is_installer:
-        # Inno Setup / MSI: run the installer silently
         subprocess.Popen(
-            [str(new_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+            _installer_args(str(new_path)),
             creationflags=DETACHED if os.name == "nt" else 0,
             close_fds=True,
         )
@@ -5441,7 +5558,7 @@ def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
                           "output": f"update available: {latest_tag}; restart wmole to install automatically"})
             return _emit_update(steps, json_out, quiet, sink)
 
-        asset = _pick_installer_asset(rel.get("assets", []))
+        asset = _pick_update_asset(rel.get("assets", []))
         if not asset:
             steps.append({"step": "asset", "code": 1,
                           "output": "no installer asset found in release"})
@@ -5455,7 +5572,8 @@ def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
             steps.append({"step": "download", "code": 0,
                           "output": f"would download {url}"})
             steps.append({"step": "install", "code": 0,
-                          "output": "would run /VERYSILENT /SUPPRESSMSGBOXES /NORESTART"})
+                          "output": ("would run the installer silently" if _is_installer_asset(name)
+                                     else "would replace the running exe")})
             return _emit_update(steps, json_out, quiet, sink)
 
         if not yes and not json_out:
@@ -5488,21 +5606,13 @@ def cli_update(json_out: bool, yes: bool = False, dry_run: bool = False,
             steps.append({"step": "download", "code": 1, "output": str(exc)})
             return _emit_update(steps, json_out, quiet, sink)
 
-        # Launch installer detached so it can replace our own exe after we exit.
+        # Same launch path as the background updater: silent installer, or a
+        # swap batch for a raw exe. It exits this process so the exe can be replaced.
         try:
-            DETACHED = 0x00000008  # DETACHED_PROCESS
-            subprocess.Popen(
-                [str(dest), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
-                creationflags=DETACHED if os.name == "nt" else 0,
-                close_fds=True,
-            )
             steps.append({"step": "install", "code": 0,
-                          "output": "installer launched in background; exiting"})
-            log_operation("self_update", dest, dest.stat().st_size,
-                          f"{__version__} -> {latest_tag}")
+                          "output": "update launched in background; exiting"})
             _emit_update(steps, json_out, quiet, sink)
-            # Exit so the installer can overwrite the running exe.
-            os._exit(0)
+            _launch_updated(dest, name, latest_tag)
         except Exception as exc:
             steps.append({"step": "install", "code": 1, "output": str(exc)})
             return _emit_update(steps, json_out, quiet, sink)
@@ -5565,7 +5675,7 @@ def _auto_update_worker() -> None:
                 pass
             return
 
-        asset = _pick_installer_asset(rel.get("assets", []))
+        asset = _pick_update_asset(rel.get("assets", []))
         if not asset:
             return
         expected_size = int(asset.get("size") or 0)
@@ -5630,6 +5740,10 @@ def apply_pending_update() -> bool:
     the installer can replace the running exe).
     """
     if not getattr(sys, "frozen", False):
+        return False
+    # The GUI sidecar is updated by the desktop app's own (verified) updater;
+    # swapping it from here would replace a file inside the app install.
+    if sys.argv[1:2] in (["serve"], ["hook"]):
         return False
     if _auto_update_disabled():
         return False
@@ -5780,12 +5894,24 @@ def list_dev_ports(include_all: bool = False) -> List[dict]:
     return sorted(rows.values(), key=lambda r: (r["port"], r["proto"]))
 
 
+# Killing any of these takes the session or the whole machine down (BSOD).
+CRITICAL_PROCESSES = {
+    "system", "system idle process", "registry", "memory compression",
+    "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe", "services.exe",
+    "lsass.exe", "svchost.exe", "dwm.exe", "fontdrvhost.exe",
+}
+
+
 def process_protection_reason(pid: int) -> str:
     if not psutil:
         return ""
+    if pid in (0, 4, os.getpid(), os.getppid()):
+        return "critical system process or wmole itself"
     try:
         proc = psutil.Process(pid)
         name = (proc.name() or "").lower()
+        if name in CRITICAL_PROCESSES:
+            return f"critical system process: {name}"
         protected = {str(v).lower() for v in load_config().get("protected_processes", [])}
         if name in protected:
             return f"protected developer process: {name}"
@@ -6182,7 +6308,7 @@ def scan_staged_secrets(root: Path) -> dict:
                 match = pattern.search(line)
                 if match:
                     value = match.group(0)
-                    preview = value[:4] + "..." + value[-4:] if len(value) > 10 else "[redacted]"
+                    preview = value[:4] + "..." if len(value) > 10 else "[redacted]"
                     findings.append({"type": kind, "path": str(path), "line": line_no,
                                      "preview": preview, "severity": "high"})
                     break
@@ -6293,7 +6419,9 @@ def cli_completion(shell: str, install: bool, json_out: bool) -> None:
 
 
 def main_cli() -> None:
-    p = argparse.ArgumentParser(prog="wmole", description="Windows port of mole")
+    p = argparse.ArgumentParser(
+        prog="wmole", description="Windows port of mole",
+        epilog="Product Owner: Umut Çelik - https://x.com/umutc6230 - https://github.com/umutc6230")
     p.add_argument("mode", nargs="?", default="analyze",
                    choices=["analyze", "clean", "purge", "status", "optimize", "uninstall", "installer", "installers", "update", "remove", "completion", "ports", "doctor", "undo", "hook", "serve"])
     p.add_argument("targets", nargs="*", help="optional paths for analyze/purge/installers")
@@ -6320,6 +6448,14 @@ def main_cli() -> None:
     # Other commands preserve the fire-and-forget startup behavior.
     if args.mode not in ("serve", "hook") and not (args.mode == "update" and args.disable_auto):
         start_auto_update_check()
+
+    # Retention used to run only when the GUI Security Center was opened, so
+    # CLI/TUI users kept every quarantined item forever.
+    if args.mode != "hook":
+        try:
+            purge_expired_quarantine()
+        except Exception as exc:
+            _debug_log(f"quarantine expiry failed: {exc}")
 
     target_paths = [Path(t).expanduser() for t in args.targets]
     override_paths = parse_paths_arg(args.paths)

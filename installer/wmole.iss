@@ -5,10 +5,10 @@
   #define MyAppVersion "0.7.0"
 #endif
 #ifndef MyAppPublisher
-  #define MyAppPublisher "palamut62"
+  #define MyAppPublisher "umutc6230"
 #endif
 #ifndef MyAppURL
-  #define MyAppURL "https://github.com/palamut62/wmole"
+  #define MyAppURL "https://github.com/umutc6230/wmole"
 #endif
 #ifndef MyAppExeName
   #define MyAppExeName "wmole.exe"

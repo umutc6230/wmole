@@ -55,6 +55,15 @@ listen<string>("sidecar-event", (msg) => {
   }
 });
 
+// Sidecar çöktüyse hiçbir istek artık "done" almaz: hepsini başarısız kapat.
+listen("sidecar-exit", () => {
+  connected.set(false);
+  for (const [id, handler] of [...handlers]) {
+    handlers.delete(id);
+    handler({ id, ev: "done", ok: false, error: "sidecar exited" } as unknown as SidecarEvent);
+  }
+});
+
 export function nextId(prefix = "req"): string {
   counter += 1;
   return `${prefix}-${counter}`;

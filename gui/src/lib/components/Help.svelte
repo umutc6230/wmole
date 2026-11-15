@@ -1,5 +1,6 @@
 <script lang="ts">
   import { lang } from "$lib/i18n";
+  import { openUrl } from "@tauri-apps/plugin-opener";
 
   const content = {
     tr: {
@@ -33,7 +34,7 @@
         {
           title: "Güvenlik",
           items: [
-            ["Varsayılan: Geri Dönüşüm Kutusu", "Silmeler varsayılan olarak Geri Dönüşüm Kutusu'na gider; kalıcı silme ek onay gerektirir."],
+            ["Varsayılan: karantina", "Silmeler varsayılan olarak ~/.wmole/quarantine altına taşınır ve 30 gün boyunca Güvenlik Merkezi'nden geri alınabilir; disk alanı karantina süresi dolunca boşalır. Kalıcı silme ek onay gerektirir."],
             ["Korumalı yollar", "Sürücü kökleri, C:\\Windows, Program Files, kullanıcı profili ve .git içeren yollar engellenir."],
             ["İptal edilebilir", "Uzun işlemler alt şeritteki 'İptal' ile durdurulabilir; arayüz hiç donmaz."],
             ["İşlem günlüğü", "Tüm silmeler ~/.wmole/logs/operations.log dosyasına yazılır."],
@@ -72,7 +73,7 @@
         {
           title: "Safety",
           items: [
-            ["Default: Recycle Bin", "Deletes go to the Recycle Bin by default; permanent delete needs extra confirmation."],
+            ["Default: quarantine", "Deletes are moved to ~/.wmole/quarantine by default and can be restored from the Security Center for 30 days; disk space is freed once the retention expires. Permanent delete needs extra confirmation."],
             ["Protected paths", "Drive roots, C:\\Windows, Program Files, user profile and paths containing .git are blocked."],
             ["Cancellable", "Long operations can be stopped via 'Cancel' in the status bar; the UI never freezes."],
             ["Operation log", "All deletions are written to ~/.wmole/logs/operations.log."],
@@ -100,6 +101,11 @@
       </dl>
     </section>
   {/each}
+  <p class="owner">
+    {$lang === "tr" ? "Ürün sahibi" : "Product Owner"}: Umut Çelik ·
+    <button onclick={() => openUrl("https://x.com/umutc6230")}>X</button> ·
+    <button onclick={() => openUrl("https://github.com/umutc6230")}>GitHub</button>
+  </p>
 </div>
 
 <style>
@@ -112,4 +118,6 @@
   .item { display: grid; grid-template-columns: 200px 1fr; gap: 12px; }
   dt { color: #d29922; }
   dd { margin: 0; color: var(--muted); }
+  .owner { color: var(--faint); font-size: 12px; margin: 0; }
+  .owner button { background: none; border: none; padding: 0; color: #58a6ff; cursor: pointer; font: inherit; text-decoration: underline; }
 </style>

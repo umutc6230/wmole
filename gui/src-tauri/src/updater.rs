@@ -4,9 +4,9 @@ use sha2::{Digest, Sha256};
 use std::io::Write;
 use tauri::{AppHandle, Emitter, Manager};
 
-const GH_REPO: &str = "palamut62/wmole";
+const GH_REPO: &str = "umutc6230/wmole";
 const UA: &str = "wmole-updater";
-const RELEASE_URL_PREFIX: &str = "https://github.com/palamut62/wmole/releases/download/";
+const RELEASE_URL_PREFIX: &str = "https://github.com/umutc6230/wmole/releases/download/";
 
 /// Minisign (ed25519) public key — güncelleme paketlerinin gerçekliğini doğrular.
 ///
