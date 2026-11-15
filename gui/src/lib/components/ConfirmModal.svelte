@@ -3,17 +3,24 @@
     open = false,
     count = 0,
     bytes = 0,
+    facts = null,
+    measuring = false,
     onConfirm,
     onCancel,
   }: {
     open?: boolean;
     count?: number;
+    /** Logical size — kept visible, but it is not what the drive reclaims. */
     bytes?: number;
+    /** Allocated-byte measurement of the exact selection, when available. */
+    facts?: DiskFacts | null;
+    measuring?: boolean;
     onConfirm: (permanent: boolean) => void;
     onCancel: () => void;
   } = $props();
 
   import { t } from "$lib/i18n";
+  import type { DiskFacts } from "$lib/types";
   let permanent = $state(false);
   let confirmPermanent = $state(false);
 
@@ -40,7 +47,21 @@
   <div class="backdrop" onclick={onCancel} role="presentation">
     <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
       <h3>{$t("Silme Onayı")}</h3>
-      <p>{count} {$t("öğe")} · {fmt(bytes)}</p>
+      <p>{count} {$t("öğe")} · {fmt(bytes)} <span class="dim">({$t("mantıksal")})</span></p>
+      {#if measuring}
+        <p class="dim">{$t("Diskte gerçekten boşalacak alan ölçülüyor…")}</p>
+      {:else if facts}
+        <p class="freed">
+          {$t("Diskte gerçekten boşalacak")}: <strong>{fmt(facts.on_disk)}</strong>
+          {#if facts.truncated}<span class="dim"> ({$t("en az")})</span>{/if}
+        </p>
+        {#if facts.placeholder_files}
+          <p class="warn">
+            ☁ {facts.placeholder_files} {$t("bulut yer tutucusu")}
+            ({fmt(facts.placeholder_bytes)}) {$t("yalnızca bulutta duruyor: silmek yer açmaz.")}
+          </p>
+        {/if}
+      {/if}
       <label class="opt">
         <input
           type="checkbox"
@@ -86,13 +107,13 @@
   .modal {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 22px;
+    border-radius: var(--radius-lg);
+    padding: calc(var(--pad) * 1.6);
     min-width: 360px;
-    font-family: monospace;
+    font-family: var(--font);
     color: var(--fg);
   }
-  h3 { margin: 0 0 12px; color: #58d6a0; }
+  h3 { margin: 0 0 12px; color: var(--ok); }
   .opt {
     display: flex;
     gap: 8px;
@@ -100,7 +121,9 @@
     margin: 12px 0;
     color: var(--muted);
   }
-  .warn { color: #e5534b; font-size: 13px; }
+  .warn { color: var(--danger); font-size: var(--fs); }
+  .dim { color: var(--faint); }
+  .freed { color: var(--ok); margin: 4px 0; }
   .hint { color: var(--faint); font-size: 12px; max-width: 420px; line-height: 1.4; }
   .actions {
     display: flex;
@@ -111,11 +134,11 @@
   button {
     border: none;
     padding: 8px 14px;
-    border-radius: 5px;
+    border-radius: var(--radius);
     cursor: pointer;
-    font-family: monospace;
+    font-family: var(--font);
   }
   .ghost { background: var(--btn); color: var(--fg); }
-  button.danger { background: #e5534b; color: white; }
-  button:not(.ghost):not(.danger) { background: #2ea043; color: white; }
+  button.danger { background: var(--danger); color: white; }
+  button:not(.ghost):not(.danger) { background: var(--accent); color: white; }
 </style>

@@ -130,7 +130,6 @@ const EN: Record<string, string> = {
     "No listening localhost ports (admin may be required for all).",
   // Startup
   "Başlangıç Programları": "Startup Programs",
-  "Başlangıçtan Kaldır": "Remove from Startup",
   "Başlangıç girdisi yok.": "No startup entries.",
   // Settings
   "Yönetici Durumu": "Administrator Status",
@@ -188,7 +187,6 @@ const EN: Record<string, string> = {
   "Güncelleme kontrolü bitti": "Update check complete",
   "Güncelleme denendi": "Update attempted",
   "wmole durumu (~/.wmole) kaldırıldı": "wmole state (~/.wmole) removed",
-  "başlangıçtan kaldırıldı": "removed from startup",
   "İşlem başarısız": "Action failed",
   "kaldırıcısı başlatıldı": "uninstaller launched",
   "Önce silinecek dosya seç (registry anahtarları elle)":
@@ -206,8 +204,6 @@ const EN: Record<string, string> = {
   "Devam edilsin mi?": "Continue?",
   "süreç sonlandırılacak (kill). Kaydedilmemiş veriler kaybolabilir. Devam?":
     "processes will be terminated (kill). Unsaved data may be lost. Continue?",
-  "sistem başlangıcından kaldırılacak. Devam?":
-    "will be removed from system startup. Continue?",
   "~/.wmole klasörü kalıcı olarak silinecek (config, log, cache). Geri alınamaz. Devam?":
     "The ~/.wmole folder will be permanently deleted (config, logs, cache). Irreversible. Continue?",
   // Güncelleme (updater)
