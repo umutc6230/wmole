@@ -288,7 +288,7 @@ Context keys: Up/Down move | Enter open/run | Space pick | D delete | K permanen
 
 ```cmd
 py -m py_compile mole.py
-py -m unittest discover -s tests
+py -m pytest -q
 ```
 
 ## Benchmarks
