@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
-  import { connected, activity } from "$lib/sidecar";
+  import { connected, activity, reconnect } from "$lib/sidecar";
   import { update, openUpdateModal } from "$lib/updater";
   import { t } from "$lib/i18n";
 
@@ -25,6 +25,7 @@
 <footer class="appstatus">
   <span class="dot" class:on={$connected}></span>
   <span class="conn">{$connected ? $t("sidecar bağlı") : $t("bağlanıyor…")}</span>
+  {#if !$connected}<button onclick={reconnect}>{$t("Yeniden bağlan")}</button>{/if}
   <span class="sep">·</span>
   <span class="section">{section}</span>
 

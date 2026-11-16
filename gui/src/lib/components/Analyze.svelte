@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { deleteSelection } from "$lib/deletion";
+  import { mutating } from "$lib/sidecar";
   import { onMount } from "svelte";
   import { request, cancel } from "$lib/sidecar";
   import type { SidecarEvent } from "$lib/types";
@@ -37,6 +39,7 @@
     return `hsl(${(i * 47) % 360}, 55%, 55%)`;
   }
   function onKey(e: KeyboardEvent) {
+    if ($mutating || confirmOpen) return;
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === "INPUT" || tag === "SELECT") return;
     if (e.key === "Backspace" && path) { e.preventDefault(); scan(parent(path)); }
@@ -63,6 +66,7 @@
   }
 
   async function scan(target?: string) {
+    if ($mutating || scanning) return;
     if (target !== undefined) path = target;
     entries = [];
     scanning = true;
@@ -112,22 +116,16 @@
   }
 
   async function doDelete(permanent: boolean) {
+    if ($mutating) return;
     confirmOpen = false;
-    const targets = selected.map((i) => i.path);
-    let ok = 0,
-      err = 0;
-    await request({ op: "delete", targets, permanent }, (e) => {
-      if (e.ev === "item_result") e.ok ? ok++ : err++;
-      if (e.ev === "progress")
-        progress = {
-          done: e.done as number,
-          total: e.total as number,
-          label: String(e.label ?? ""),
-        };
+    const targets = selected.map(i => i.path);
+    const removed = await deleteSelection(targets, permanent, false, e => {
+      if (e.ev === "started") activeId = String(e.id);
+      if (e.ev === "progress") progress = { done: Number(e.done), total: Number(e.total), label: String(e.label ?? "") };
     });
-    entries = entries.filter((i) => !targets.includes(i.path));
+    entries = entries.filter(i => !removed.has(i.path));
     progress = { done: 0, total: 0, label: "" };
-    toast(`${ok} ${tr("silindi")}${err ? `, ${err} ${tr("hata")}` : ""}`, err ? "err" : "ok");
+    activeId = null;
   }
 
   onMount(() => scan(""));
@@ -136,20 +134,20 @@
 <div class="scan">
   <div class="toolbar">
     <h2>{$t("Gezgin")}</h2>
-    <button onclick={() => scan(parent(path))} disabled={scanning || !path}>{$t("⬆ Üst")}</button>
+    <button onclick={() => scan(parent(path))} disabled={scanning || $mutating || !path}>{$t("⬆ Üst")}</button>
     <input
       class="pathbox"
       bind:value={path}
       placeholder="C:\\Users\\…"
       onkeydown={(e) => e.key === "Enter" && scan()}
     />
-    <button onclick={() => scan()} disabled={scanning}>{scanning ? "…" : $t("Tara")}</button>
+    <button onclick={() => scan()} disabled={scanning || $mutating}>{scanning ? "…" : $t("Tara")}</button>
     <label class="dry"><input type="checkbox" bind:checked={largeMode} onchange={() => scan()} /> {$t("Büyük dosyalar")}</label>
     <button onclick={loadDrives}>{$t("Sürücüler")}</button>
     <button class:active={treemap} onclick={() => (treemap = !treemap)}>{$t("Harita")}</button>
     <button onclick={() => setAll(true)} disabled={!entries.length}>{$t("Tümünü Seç")}</button>
     <button onclick={() => setAll(false)} disabled={!entries.length}>{$t("Hiçbiri")}</button>
-    <button class="danger" onclick={() => selected.length && (confirmOpen = true)} disabled={!selected.length}>{$t("Sil…")} ({selected.length})</button>
+    <button class="danger" onclick={() => selected.length && (confirmOpen = true)} disabled={!selected.length || scanning || $mutating}>{$t("Sil…")} ({selected.length})</button>
     <span class="count">{entries.length} {$t("öğe")} · {selected.length} {$t("seçili")} · {fmt(selectedBytes)}</span>
   </div>
 

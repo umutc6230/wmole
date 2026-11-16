@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { deleteSelection } from "$lib/deletion";
+  import { mutating } from "$lib/sidecar";
   import { request, cancel } from "$lib/sidecar";
   import type { ScanItem, SidecarEvent, DiskFacts } from "$lib/types";
   import VirtualList from "./VirtualList.svelte";
@@ -56,6 +58,7 @@
   }
 
   async function scan() {
+    if ($mutating || scanning) return;
     items = [];
     scanning = true;
     progress = { done: 0, total: 0, label: "" };
@@ -110,7 +113,7 @@
   }
 
   async function askDelete() {
-    if (!selected.length) return;
+    if (!selected.length || scanning || $mutating) return;
     modalOpen = true;
     // Measure the exact selection now rather than during the scan: the extra
     // syscall per file is affordable here and this number is about to be shown
@@ -131,33 +134,23 @@
   }
 
   async function doDelete(permanent: boolean) {
+    if ($mutating) return;
     modalOpen = false;
-    const targets = selected.map((i) => i.path);
-    let ok = 0,
-      err = 0;
-    await request({ op: "delete", targets, permanent, dry_run: dryRun }, (e) => {
+    const targets = selected.map(i => i.path);
+    const removed = await deleteSelection(targets, permanent, dryRun, e => {
       if (e.ev === "started") activeId = String(e.id);
-      if (e.ev === "item_result") e.ok ? ok++ : err++;
-      if (e.ev === "progress")
-        progress = {
-          done: e.done as number,
-          total: e.total as number,
-          label: String(e.label ?? ""),
-        };
+      if (e.ev === "progress") progress = { done: Number(e.done), total: Number(e.total), label: String(e.label ?? "") };
     });
-    if (!dryRun) items = items.filter((i) => !targets.includes(i.path));
-    activeId = null;
+    items = items.filter(i => !removed.has(i.path));
     progress = { done: 0, total: 0, label: "" };
-    const msg = `${dryRun ? tr("Dry-run:") + " " : ""}${ok} ${dryRun ? tr("önizlendi") : tr("silindi")}${err ? `, ${err} ${tr("hata")}` : ""}`;
-    toast(msg, err ? "err" : "ok");
-    if (!dryRun && ok > 0) notify(tr("wmole temizlik"), msg);
+    activeId = null;
   }
 </script>
 
 <div class="scan">
   <div class="toolbar">
     <h2>{$t(titleKey[mode] ?? mode)}</h2>
-    <button onclick={scan} disabled={scanning}
+    <button onclick={scan} disabled={scanning || $mutating}
       >{scanning ? $t("Taranıyor…") : $t("Tara")}</button
     >
     <button onclick={() => setAll(true)} disabled={!items.length}>{$t("Tümünü Seç")}</button>
@@ -170,7 +163,7 @@
     {/if}
     <input class="filter" placeholder={$t("filtrele…")} bind:value={filter} />
     <label class="dry"><input type="checkbox" bind:checked={dryRun} /> {$t("Dry-run")}</label>
-    <button class="danger" onclick={askDelete} disabled={!selected.length}
+    <button class="danger" onclick={askDelete} disabled={!selected.length || scanning || $mutating}
       >{dryRun ? $t("Önizle") : $t("Sil")}… ({selected.length})</button
     >
     <span class="count">{shown.length}/{items.length} {$t("öğe")} · {selected.length} {$t("seçili")} · {fmt(selectedBytes)}</span>

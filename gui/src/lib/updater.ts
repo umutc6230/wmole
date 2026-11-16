@@ -65,6 +65,7 @@ listen("update-unsigned-warning", () =>
 );
 
 export async function checkForUpdate(silent = true) {
+  if (["checking", "downloading", "ready"].includes(get(update).phase)) return;
   update.update((s) => ({ ...s, phase: "checking", error: "" }));
   try {
     const r = await invoke<any>("check_update");
@@ -110,7 +111,11 @@ export async function downloadUpdate() {
     update.update((v) => ({ ...v, phase: "ready", setupPath: path, pct: 100 }));
   } catch (e) {
     const msg = String(e);
-    const friendly = msg.startsWith("checksum-mismatch")
+    const friendly = msg.startsWith("signature-not-configured")
+      ? tr("Güncelleme imza anahtarı henüz tanımlı değil. Güvenli otomatik kurulum kapalı.")
+      : msg.startsWith("package-changed")
+      ? tr("Güncelleme dosyası değişmiş; yeniden indirin")
+      : msg.startsWith("checksum-mismatch")
       ? tr("İndirilen dosya bozuk (doğrulama hatası)")
       : msg.startsWith("signature-verification-failed")
         ? tr(

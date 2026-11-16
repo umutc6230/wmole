@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { deleteSelection } from "$lib/deletion";
+  import { mutating } from "$lib/sidecar";
   import { request, cancel } from "$lib/sidecar";
   import type { SidecarEvent } from "$lib/types";
   import VirtualList from "./VirtualList.svelte";
@@ -25,6 +27,7 @@
   }
 
   async function scan() {
+    if ($mutating || scanning) return;
     items = []; scanning = true;
     const buf: Dup[] = [];
     await request({ op: "duplicates", paths: path ? [path] : [] }, (e: SidecarEvent) => {
@@ -60,16 +63,16 @@
   }
 
   async function del(permanent: boolean) {
+    if ($mutating) return;
     confirmOpen = false;
-    const targets = selected.map((i) => i.path);
-    let ok = 0, err = 0;
-    await request({ op: "delete", targets, permanent }, (e) => {
-      if (e.ev === "item_result") e.ok ? ok++ : err++;
-      if (e.ev === "progress") progress = { done: e.done as number, total: e.total as number, label: String(e.label ?? "") };
+    const targets = selected.map(i => i.path);
+    const removed = await deleteSelection(targets, permanent, false, e => {
+      if (e.ev === "started") activeId = String(e.id);
+      if (e.ev === "progress") progress = { done: Number(e.done), total: Number(e.total), label: String(e.label ?? "") };
     });
-    items = items.filter((i) => !targets.includes(i.path));
+    items = items.filter(i => !removed.has(i.path));
     progress = { done: 0, total: 0, label: "" };
-    toast(`${ok} ${tr("kopya silindi")}${err ? `, ${err} ${tr("hata")}` : ""}`, err ? "err" : "ok");
+    activeId = null;
   }
 </script>
 
@@ -77,10 +80,10 @@
   <div class="toolbar">
     <h2>{$t("Yinelenen Dosyalar")}</h2>
     <input class="pathbox" bind:value={path} placeholder="C:\\Users\\…" onkeydown={(e) => e.key === "Enter" && scan()} />
-    <button onclick={scan} disabled={scanning}>{scanning ? $t("Taranıyor…") : $t("Tara")}</button>
+    <button onclick={scan} disabled={scanning || $mutating}>{scanning ? $t("Taranıyor…") : $t("Tara")}</button>
     <button onclick={selectExtras} disabled={!items.length}>{$t("Fazlalıkları Seç")}</button>
-    <button onclick={clearSelection} disabled={!selected.length}>{$t("Seçimi Temizle")}</button>
-    <button class="danger" onclick={() => selected.length && (confirmOpen = true)} disabled={!selected.length}>{$t("Sil…")} ({selected.length})</button>
+    <button onclick={clearSelection} disabled={!selected.length || scanning || $mutating}>{$t("Seçimi Temizle")}</button>
+    <button class="danger" onclick={() => selected.length && (confirmOpen = true)} disabled={!selected.length || scanning || $mutating}>{$t("Sil…")} ({selected.length})</button>
     <span class="count">{items.length} {$t("kopya")} · {fmt(selectedBytes)} {$t("seçili")}</span>
   </div>
   <p class="hint">{$t("≥1MB dosyalar boyut+MD5 ile karşılaştırılır. Aynı renkli grup = aynı içerik. Her gruptan birini saklamanız önerilir.")}</p>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { checkForUpdate } from "$lib/updater";
   import { request } from "$lib/sidecar";
   import GenericConfirm from "./GenericConfirm.svelte";
   import { toast } from "$lib/toast";
@@ -9,14 +10,9 @@
   let updateOut = $state("");
   let removeConfirm = $state(false);
 
-  async function checkUpdate(dryRun: boolean) {
+  async function checkUpdate() {
     busy = true;
-    updateOut = tr("Taranıyor…");
-    const done = await request({ op: "update", dry_run: dryRun, yes: !dryRun });
-    busy = false;
-    const payload: any = done.payload ?? {};
-    updateOut = JSON.stringify(payload, null, 2);
-    toast(tr(dryRun ? "Güncelleme kontrolü bitti" : "Güncelleme denendi"), "info");
+    try { await checkForUpdate(false); } finally { busy = false; }
   }
 
   async function doRemove() {
@@ -26,7 +22,7 @@
     busy = false;
     const payload: any = done.payload ?? {};
     updateOut = JSON.stringify(payload, null, 2);
-    toast(tr("wmole durumu (~/.wmole) kaldırıldı"), "ok");
+    if (done.ok) toast(tr("Ayarlar sıfırlandı; karantina ve kurtarma kayıtları korundu"), "ok");
   }
 </script>
 
@@ -35,18 +31,18 @@
     <h3>{$t("Güncelleme")}</h3>
     <p>{$t("GitHub'daki son sürümü kontrol et veya güncellemeyi uygula.")}</p>
     <div class="row">
-      <button onclick={() => checkUpdate(true)} disabled={busy}>{$t("Kontrol Et (dry-run)")}</button>
-      <button onclick={() => checkUpdate(false)} disabled={busy}>{$t("Güncelle")}</button>
+      <button onclick={checkUpdate} disabled={busy}>{$t("Kontrol Et (dry-run)")}</button>
+
     </div>
   </section>
 
   <section class="card">
-    <h3>{$t("wmole Durumunu Kaldır")}</h3>
+    <h3>{$t("Ayarları Sıfırla")}</h3>
     <p>
-      <code>~/.wmole</code> — {$t("~/.wmole altındaki yapılandırma, log ve cache'i kalıcı olarak siler. Bu işlem geri alınamaz.")}
+      <code>~/.wmole</code> — {$t("Ayarları ve önbelleği sıfırlar. Karantina, işlem günlüğü ve güvenlik kayıtları korunur.")}
     </p>
     <button class="danger" onclick={() => (removeConfirm = true)} disabled={busy}>
-      {$t("~/.wmole'u Sil")}
+      {$t("Ayarları Sıfırla")}
     </button>
   </section>
 
@@ -58,8 +54,8 @@
 <GenericConfirm
   open={removeConfirm}
   danger
-  title="wmole Durumunu Sil"
-  message={tr("~/.wmole klasörü kalıcı olarak silinecek (config, log, cache). Geri alınamaz. Devam?")}
+  title="Ayarları Sıfırla"
+  message={tr("Ayarlar ve önbellek silinecek. Karantina ve kurtarma kayıtları korunacak. Devam?")}
   confirmLabel="Kalıcı Sil"
   onConfirm={doRemove}
   onCancel={() => (removeConfirm = false)}

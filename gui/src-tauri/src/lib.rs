@@ -27,16 +27,63 @@ fn relaunch_admin(app: tauri::AppHandle) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     // PowerShell single-quoted strings escape a literal quote by doubling it.
     let exe_str = exe.to_string_lossy().replace('\'', "''");
-    std::process::Command::new("powershell")
+    let status = std::process::Command::new("powershell")
         .args([
             "-WindowStyle",
             "Hidden",
             "-Command",
-            &format!("Start-Process -FilePath '{}' -Verb RunAs", exe_str),
+            &format!("try {{ Start-Process -FilePath '{}' -WindowStyle Hidden -Verb RunAs -ErrorAction Stop; exit 0 }} catch {{ exit 1 }}", exe_str),
         ])
-        .spawn()
+        .status()
         .map_err(|e| e.to_string())?;
+    if !status.success() {
+        return Err("Yönetici izni verilmedi; uygulama açık kaldı".into());
+    }
     app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+fn restart_sidecar(app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<Sidecar>();
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    if guard.is_some() {
+        return Ok(());
+    }
+    let sidecar = app
+        .shell()
+        .sidecar("wmole")
+        .map_err(|e| e.to_string())?
+        .args(["serve"]);
+    let (mut rx, child) = sidecar.spawn().map_err(|e| e.to_string())?;
+    guard.replace(child);
+    drop(guard);
+
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    for line in text.lines() {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        let _ = handle.emit("sidecar-event", line.to_string());
+                    }
+                }
+                // Sidecar öldü: UI'daki bekleyen istekler sonsuza dek asılı kalmasın.
+                CommandEvent::Terminated(_) => {
+                    if let Ok(mut child) = handle.state::<Sidecar>().0.lock() {
+                        child.take();
+                    }
+                    let _ = handle.emit("sidecar-exit", ());
+                }
+                _ => {}
+            }
+        }
+    });
+
     Ok(())
 }
 
@@ -47,33 +94,9 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .manage(Sidecar(Mutex::new(None)))
+        .manage(updater::UpdateState::default())
         .setup(|app| {
-            // ── Python sidecar ──
-            let sidecar = app.shell().sidecar("wmole").unwrap().args(["serve"]);
-            let (mut rx, child) = sidecar.spawn().expect("failed to spawn sidecar");
-            app.state::<Sidecar>().0.lock().unwrap().replace(child);
-
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                while let Some(event) = rx.recv().await {
-                    match event {
-                        CommandEvent::Stdout(bytes) => {
-                            let text = String::from_utf8_lossy(&bytes);
-                            for line in text.lines() {
-                                if line.trim().is_empty() {
-                                    continue;
-                                }
-                                let _ = handle.emit("sidecar-event", line.to_string());
-                            }
-                        }
-                        // Sidecar öldü: UI'daki bekleyen istekler sonsuza dek asılı kalmasın.
-                        CommandEvent::Terminated(_) => {
-                            let _ = handle.emit("sidecar-exit", ());
-                        }
-                        _ => {}
-                    }
-                }
-            });
+            restart_sidecar(app.handle().clone())?;
 
             // ── Sistem tepsisi (tray) ──
             let show = MenuItem::with_id(app, "show", "Göster", true, None::<&str>)?;
@@ -99,6 +122,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             send_request,
+            restart_sidecar,
             relaunch_admin,
             updater::check_update,
             updater::download_update,

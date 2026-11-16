@@ -2,6 +2,8 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { writable } from "svelte/store";
 import type { Request, SidecarEvent } from "./types";
+import { toast } from "./toast";
+import { tr } from "./i18n";
 
 type Handler = (e: SidecarEvent) => void;
 const handlers = new Map<string, Handler>();
@@ -29,7 +31,7 @@ function endActivity() {
   if (inflight === 0) activity.set({ busy: false, op: "", label: "", done: 0, total: 0 });
 }
 
-listen<string>("sidecar-event", (msg) => {
+const eventListener = listen<string>("sidecar-event", (msg) => {
   let e: SidecarEvent;
   try {
     e = JSON.parse(msg.payload);
@@ -50,13 +52,14 @@ listen<string>("sidecar-event", (msg) => {
     }));
   }
   if (e.id && handlers.has(e.id)) {
+    connected.set(true);
     handlers.get(e.id)!(e);
     if (e.ev === "done") handlers.delete(e.id);
   }
 });
 
 // Sidecar çöktüyse hiçbir istek artık "done" almaz: hepsini başarısız kapat.
-listen("sidecar-exit", () => {
+const exitListener = listen("sidecar-exit", () => {
   connected.set(false);
   for (const [id, handler] of [...handlers]) {
     handlers.delete(id);
@@ -70,30 +73,70 @@ export function nextId(prefix = "req"): string {
 }
 
 /** İstek gönder; her olay için onEvent çağrılır. done'da Promise çözülür ve done olayını döner. */
-export function request(
-  req: Omit<Request, "id">,
-  onEvent?: Handler,
-): Promise<SidecarEvent> {
+export const mutating = writable(false);
+let mutationActive = false;
+const mutations = new Set(["delete", "remove", "quarantine_empty", "quarantine_restore",
+  "settings_set", "schedule_set", "schedule_clear", "startup_set", "optimize_run",
+  "uninstall_run", "ports_kill", "update", "journal"]);
+
+/** Always settles with a terminal event, including transport failures. Inspect ok. */
+export function request(req: Omit<Request, "id">, onEvent?: Handler): Promise<SidecarEvent> {
   const id = nextId(req.op);
   const full: Request = { ...req, id };
+  const mutation = mutations.has(req.op);
+  if (mutation && mutationActive) {
+    const done: SidecarEvent = { id, ev: "done", ok: false, error: tr("Başka bir işlem sürüyor") };
+    toast(String(done.error), "err");
+    onEvent?.(done);
+    return Promise.resolve(done);
+  }
+  if (mutation) { mutationActive = true; mutating.set(true); }
   startActivity(req.op);
-  return new Promise((resolve, reject) => {
-    handlers.set(id, (e) => {
-      onEvent?.(e);
-      if (e.ev === "done") {
-        endActivity();
-        resolve(e);
-      }
-    });
-    void invoke("send_request", { line: JSON.stringify(full) }).catch((error) => {
+  return new Promise(resolve => {
+    let settled = false;
+    let lastError = "";
+    let timer: ReturnType<typeof setTimeout>;
+    const finish = (event: SidecarEvent) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       handlers.delete(id);
       endActivity();
-      reject(error);
-    });
+      if (mutation) { mutationActive = false; mutating.set(false); }
+      if (!event.ok && !event.cancelled)
+        toast(String(event.error || lastError || tr("İşlem başarısız")), "err");
+      resolve(event);
+    };
+    const resetTimeout = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void cancel(id).catch(() => {});
+        const event: SidecarEvent = { id, ev: "done", ok: false, error: tr("İşlem zaman aşımına uğradı") };
+        try { onEvent?.(event); } finally { finish(event); }
+      }, 10 * 60 * 1000);
+    };
+    const handler: Handler = e => {
+      resetTimeout();
+      if (e.ev === "error") lastError = String(e.message ?? "");
+      try { onEvent?.(e); }
+      catch (error) { lastError = String(error); }
+      finally { if (e.ev === "done") finish(e); }
+    };
+    handlers.set(id, handler);
+    resetTimeout();
+    void Promise.all([eventListener, exitListener])
+      .then(() => invoke("send_request", { line: JSON.stringify(full) }))
+      .catch(error => handler({ id, ev: "done", ok: false, error: String(error) }));
   });
 }
 
-/** Çalışan bir isteği iptal et. */
 export function cancel(id: string) {
   return invoke("send_request", { line: JSON.stringify({ id, op: "cancel" }) });
+}
+
+export async function reconnect() {
+  try {
+    await invoke("restart_sidecar");
+    await request({ op: "ping" });
+  } catch (error) { toast(String(error), "err"); }
 }

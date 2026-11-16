@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from "$lib/dialog";
   let {
     open = false,
     title = "Onay",
@@ -21,7 +22,7 @@
 
 {#if open}
   <div class="backdrop" onclick={onCancel} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
+    <div class="modal" use:dialog={onCancel} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={$t(title)} tabindex="-1">
       <h3 class:danger>{$t(title)}</h3>
       <p>{message}</p>
       <div class="actions">

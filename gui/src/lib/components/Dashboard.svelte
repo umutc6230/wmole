@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { deleteSelection } from "$lib/deletion";
+  import { mutating } from "$lib/sidecar";
   import { onMount, onDestroy } from "svelte";
   import { request } from "$lib/sidecar";
   import type { ScanItem, SidecarEvent } from "$lib/types";
@@ -101,6 +103,7 @@
   );
 
   async function quickScan() {
+    if ($mutating || scanning) return;
     scanItems = [];
     scanning = true;
     scanned = false;
@@ -114,27 +117,18 @@
   }
 
   async function quickClean(permanent: boolean) {
+    if ($mutating) return;
     confirmOpen = false;
-    const targets = chosen.map((i) => i.path);
-    let ok = 0,
-      err = 0;
-    await request({ op: "delete", targets, permanent }, (e) => {
-      if (e.ev === "item_result") e.ok ? ok++ : err++;
-      if (e.ev === "progress")
-        progress = {
-          done: e.done as number,
-          total: e.total as number,
-          label: String(e.label ?? ""),
-        };
+    const targets = chosen.map(i => i.path);
+    const removed = await deleteSelection(targets, permanent, false, e => {
+      
+      if (e.ev === "progress") progress = { done: Number(e.done), total: Number(e.total), label: String(e.label ?? "") };
     });
+    scanItems = scanItems.filter(i => !removed.has(i.path));
     progress = { done: 0, total: 0, label: "" };
-    scanItems = [];
-    scanned = false;
-    const msg = `${tr("Hızlı temizlik:")} ${ok} ${tr("öğe silindi")}${err ? `, ${err} ${tr("hata")}` : ""}`;
-    toast(msg, err ? "err" : "ok");
-    if (ok > 0) notify("wmole", msg);
-    loadHistory();
-    loadSummary();
+    scanned = scanItems.length > 0;
+    await loadHistory();
+    await loadSummary();
   }
 
   onMount(() => {
@@ -166,7 +160,7 @@
       </p>
       <button
         class="cta"
-        disabled={scanning}
+        disabled={scanning || $mutating}
         onclick={() => (scanned && chosen.length ? (confirmOpen = true) : quickScan())}
       >
         {scanning
@@ -179,7 +173,7 @@
       </button>
     </div>
     <div class="hero-tiles">
-      <button class="stat" onclick={quickScan} disabled={scanning}>
+      <button class="stat" onclick={quickScan} disabled={scanning || $mutating}>
         <span>{$t("Geri kazanılabilir")}</span>
         <strong style="color:var(--ok)">{scanned ? fmt(reclaimable) : "—"}</strong>
         <em>{$t(scanned ? "seçili öğeler" : "taramak için tıkla")}</em>

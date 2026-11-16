@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from "$lib/dialog";
   let {
     open = false,
     count = 0,
@@ -23,6 +24,7 @@
   import type { DiskFacts } from "$lib/types";
   let permanent = $state(false);
   let confirmPermanent = $state(false);
+  $effect(() => { if (open) { permanent = false; confirmPermanent = false; } });
 
   function fmt(n: number) {
     const u = ["B", "KB", "MB", "GB", "TB"];
@@ -45,14 +47,14 @@
 
 {#if open}
   <div class="backdrop" onclick={onCancel} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
+    <div class="modal" use:dialog={onCancel} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={$t("Silme Onayı")} tabindex="-1">
       <h3>{$t("Silme Onayı")}</h3>
       <p>{count} {$t("öğe")} · {fmt(bytes)} <span class="dim">({$t("mantıksal")})</span></p>
       {#if measuring}
         <p class="dim">{$t("Diskte gerçekten boşalacak alan ölçülüyor…")}</p>
       {:else if facts}
         <p class="freed">
-          {$t("Diskte gerçekten boşalacak")}: <strong>{fmt(facts.on_disk)}</strong>
+          {$t("Seçimin diskteki boyutu")}: <strong>{fmt(facts.on_disk)}</strong>
           {#if facts.truncated}<span class="dim"> ({$t("en az")})</span>{/if}
         </p>
         {#if facts.placeholder_files}
@@ -72,7 +74,7 @@
       </label>
       {#if !permanent}
         <p class="hint">
-          {$t("Öğeler 30 gün karantinada tutulur (Güvenlik Merkezi'nden geri alınır); başka sürücüdekiler Geri Dönüşüm Kutusu'na gider. Disk alanı karantina boşaltılınca açılır.")}
+          {$t("Öğeler ayarlara göre karantinaya veya Geri Dönüşüm Kutusu'na taşınır. Disk alanı bunlar boşaltılınca açılır. Temp içindeki yeni veya korunan içerik atlanır.")}
         </p>
       {/if}
       {#if permanent && confirmPermanent}

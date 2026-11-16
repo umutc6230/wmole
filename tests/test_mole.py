@@ -26,7 +26,7 @@ class WmoleBehaviorTests(unittest.TestCase):
             with mock.patch.object(mole, "OP_LOG_FILE", log):
                 hist = mole.read_cleanup_history(limit=5)
             self.assertEqual(hist["count"], 2)
-            self.assertEqual(hist["total_freed"], 150)
+            self.assertEqual(hist["total_freed"], 50)  # recycle-bin moves do not free space
             self.assertEqual(hist["last_ts"], "2026-05-29 10:01:00")
             # newest-first ordering
             self.assertEqual(hist["recent"][0]["path"], "C:\\b\\tmp")
@@ -1428,7 +1428,7 @@ class DuplicateHashTests(unittest.TestCase):
             for f in (old_file, old_dir / "x.bin", fresh, busy):
                 f.write_text("data", encoding="utf-8")
             stale = mole.time.time() - 3 * 86400
-            for f in (old_file, old_dir, busy):
+            for f in (old_file, old_dir / "x.bin", old_dir, busy):
                 os.utime(f, (stale, stale))
             with (
                 mock.patch.object(mole, "TEMP", temp),
@@ -1438,7 +1438,9 @@ class DuplicateHashTests(unittest.TestCase):
                 self.assertTrue(mole._is_contents_only_dir(temp))
                 self.assertIsNone(mole.delete_path(temp, use_trash=True, dry_run=True))
                 self.assertTrue(old_file.exists())  # dry run touches nothing
-                self.assertIsNone(mole.delete_path(temp, use_trash=True, dry_run=False))
+                self.assertIn(
+                    "could not be removed", mole.delete_path(temp, use_trash=True, dry_run=False)
+                )
                 handle.read()
             self.assertEqual(sorted(p.name for p in temp.iterdir()), ["busy.tmp", "fresh.tmp"])
 
@@ -1462,7 +1464,7 @@ class DuplicateHashTests(unittest.TestCase):
                 for patch in self._vault(root):
                     stack.enter_context(patch)
                 self.assertIsNone(mole.quarantine_path(source, size=4))
-                self.assertEqual(mole.empty_quarantine(), {"removed": 1, "bytes": 4})
+                self.assertEqual(mole.empty_quarantine(), {"removed": 1, "bytes": 4, "failed": 0})
                 self.assertEqual(mole._quarantine_entries(), [])
                 self.assertEqual([p.name for p in (root / "vault").iterdir()], ["index.json"])
 

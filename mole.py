@@ -530,38 +530,77 @@ def _is_contents_only_dir(path: Path) -> bool:
 TEMP_MIN_AGE_SECONDS = 24 * 3600
 
 
-def purge_dir_contents(path: Path, dry_run: bool, known_size: int = 0) -> Optional[str]:
-    """Empty a temp/cache root: permanent, entry by entry, skipping anything in
-    use or younger than a day. Temp junk is not worth a 30-day quarantine, and
-    one row per entry (thousands in %TEMP%) made scans crawl."""
+def _tree_policy_error(path: Path, min_age: float | None = None) -> str:
+    """Preflight a whole target before any rename or deletion can affect it."""
+    reason = _delete_guard(path)
+    if reason:
+        return reason
+    whitelist = load_whitelist()
+    # A protected descendant blocks a whole-tree move even if it is missing now.
+    base = os.path.normcase(os.path.abspath(path)).rstrip("\\/")
+    for protected in [*whitelist, *load_denylist()]:
+        child = os.path.normcase(os.path.abspath(protected))
+        if child.startswith(base + os.sep):
+            return f"protected descendant: {protected}"
+    pending = [path]
+    try:
+        while pending:
+            current = pending.pop()
+            if (
+                is_protected_path(current)
+                or is_whitelisted(current, whitelist)
+                or current.resolve() == WMOLE_DIR.resolve()
+            ):
+                return f"protected path: {current}"
+            if min_age is not None and current.lstat().st_mtime > min_age:
+                return f"recent content: {current}"
+            if current.is_dir() and not _is_reparse_point(current):
+                pending.extend(current.iterdir())
+    except OSError as exc:
+        return f"cannot verify target: {exc}"
+    return ""
+
+
+def purge_dir_contents(
+    path: Path,
+    dry_run: bool,
+    known_size: int = 0,
+    use_trash: bool = True,
+    report: dict | None = None,
+) -> Optional[str]:
+    """Keep the root; only process old, unprotected children in the chosen mode.
+
+    A directory containing any recent descendant is kept intact. Never turn a
+    reversible request into a permanent delete, even for Windows cache roots.
+    """
+    result = report if report is not None else {}
+    result.update(removed=0, skipped=0, failed=0, bytes=0, completed=False, details=[])
+    reason = _delete_guard(path)
+    if reason:
+        return reason
     cutoff = time.time() - TEMP_MIN_AGE_SECONDS
-    removed = failed = 0
     try:
         children = list(path.iterdir())
     except OSError as exc:
         return str(exc)
     for child in children:
-        try:
-            if child.lstat().st_mtime > cutoff:
-                continue
-            if dry_run:
-                removed += 1
-            elif child.is_dir() and not _is_reparse_point(child):
-                shutil.rmtree(child)
-                removed += 1
-            else:
-                try:
-                    child.unlink()
-                except (IsADirectoryError, PermissionError):
-                    os.rmdir(child)  # junction/dir link: remove the link only
-                removed += 1
-        except OSError:
-            failed += 1  # in use: leave it
-    action = "delete-dry-run" if dry_run else "delete-permanent"
-    if failed and not removed:
-        log_operation(action, path, result="all entries in use")
-        return "all entries in use"
-    log_operation(action, path, size=known_size, result="ok")
+        reason = _tree_policy_error(child, min_age=cutoff)
+        if reason:
+            result["skipped"] += 1
+            result["details"].append({"path": str(child), "reason": reason})
+            continue
+        facts = disk_facts(child)
+        error = delete_path(child, use_trash=use_trash, dry_run=dry_run, known_size=facts.logical)
+        if error:
+            result["failed"] += 1
+            result["details"].append({"path": str(child), "reason": error})
+        else:
+            result["removed"] += 1
+            if not use_trash and not dry_run:
+                result["bytes"] += facts.on_disk
+    result["completed"] = not (result["failed"] or result["skipped"])
+    if result["failed"]:
+        return f"{result['failed']} entries could not be removed"
     return None
 
 
@@ -910,7 +949,63 @@ def git_delete_risk(path: Path) -> str:
     return ""
 
 
-_QUARANTINE_LOCK = threading.Lock()
+class QuarantineLock:
+    """Reentrant thread lock plus a Windows process lock for vault transactions."""
+
+    def __init__(self):
+        self.local = threading.local()
+        self.lock = threading.RLock()
+
+    def __enter__(self):
+        self.lock.acquire()
+        depth = getattr(self.local, "depth", 0)
+        if depth:
+            self.local.depth = depth + 1
+            return self
+        handle = None
+        try:
+            WMOLE_DIR.mkdir(parents=True, exist_ok=True)
+            handle = open(WMOLE_DIR / "quarantine.lock", "a+b")
+            handle.seek(0, 2)
+            if handle.tell() == 0:
+                handle.write(b"0")
+                handle.flush()
+            if os.name == "nt":
+                import msvcrt
+
+                deadline = time.monotonic() + 30
+                while True:
+                    try:
+                        handle.seek(0)
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                        break
+                    except OSError:
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError("quarantine is busy")
+                        time.sleep(0.05)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            self.local.handle = handle
+            self.local.depth = 1
+            return self
+        except BaseException:
+            if handle:
+                handle.close()
+            self.lock.release()
+            raise
+
+    def __exit__(self, *args):
+        try:
+            self.local.depth -= 1
+            if not self.local.depth:
+                self.local.handle.close()  # closing releases the OS lock
+        finally:
+            self.lock.release()
+
+
+_QUARANTINE_LOCK = QuarantineLock()
 
 
 def _quarantine_entries() -> list[dict]:
@@ -962,6 +1057,14 @@ def _move_to_quarantine(path: Path, target: Path) -> Optional[str]:
 
 
 def quarantine_path(path: Path, size: int = 0) -> str | None:
+    with _QUARANTINE_LOCK:
+        return _quarantine_path_locked(path, size)
+
+
+def _quarantine_path_locked(path: Path, size: int = 0) -> str | None:
+    reason = _tree_policy_error(path)
+    if reason:
+        return reason
     risk = git_delete_risk(path)
     if risk:
         log_security_event("git-delete-blocked", {"path": str(path), "reason": risk})
@@ -1028,21 +1131,42 @@ def _use_quarantine(path: Path) -> bool:
     )
 
 
+def _remove_quarantine_entry(entry: dict) -> bool:
+    entry_id = str(entry.get("id", ""))
+    if not re.fullmatch(r"\d+-[0-9a-f]+", entry_id):
+        return True  # discard invalid metadata without touching any path
+    target = QUARANTINE_DIR / entry_id
+    try:
+        if _is_reparse_point(target):
+            return False
+        if target.exists():
+            shutil.rmtree(target, onerror=_onerr_chmod)
+        return not os.path.lexists(target)
+    except OSError:
+        return False
+
+
 def empty_quarantine() -> dict:
-    """Permanently drop every quarantined item (frees the space right away)."""
+    """Keep failed entries indexed and report only successfully removed bytes."""
     with _QUARANTINE_LOCK:
-        entries = _quarantine_entries()
-        for entry in entries:
-            entry_id = str(entry.get("id", ""))
-            if re.fullmatch(r"\d+-[0-9a-f]+", entry_id):
-                shutil.rmtree(QUARANTINE_DIR / entry_id, onerror=_onerr_chmod)
-        _save_quarantine_entries([])
-    freed = sum(int(entry.get("size", 0) or 0) for entry in entries)
-    log_security_event("quarantine-emptied", {"removed": len(entries), "bytes": freed})
-    return {"removed": len(entries), "bytes": freed}
+        kept, removed, freed = [], 0, 0
+        for entry in _quarantine_entries():
+            if _remove_quarantine_entry(entry):
+                removed += 1
+                freed += int(entry.get("size", 0) or 0)
+            else:
+                kept.append(entry)
+        _save_quarantine_entries(kept)
+    log_security_event("quarantine-emptied", {"removed": removed, "bytes": freed})
+    return {"removed": removed, "bytes": freed, "failed": len(kept)}
 
 
 def restore_quarantine(entry_id: str) -> str | None:
+    with _QUARANTINE_LOCK:
+        return _restore_quarantine_locked(entry_id)
+
+
+def _restore_quarantine_locked(entry_id: str) -> str | None:
     entries = _quarantine_entries()
     entry = next((row for row in entries if row.get("id") == entry_id), None)
     if not entry:
@@ -1092,15 +1216,15 @@ def purge_expired_quarantine() -> int:
     removed = 0
     with _QUARANTINE_LOCK:
         for entry in _quarantine_entries():
-            entry_id = str(entry.get("id", ""))
             if int(entry.get("created", 0)) >= cutoff:
                 kept.append(entry)
                 continue
             # A blank/odd id would resolve to the quarantine root (or outside it)
             # and wipe every stored item; drop the row, touch nothing on disk.
-            if re.fullmatch(r"\d+-[0-9a-f]+", entry_id):
-                shutil.rmtree(QUARANTINE_DIR / entry_id, ignore_errors=True)
-            removed += 1
+            if _remove_quarantine_entry(entry):
+                removed += 1
+            else:
+                kept.append(entry)
         if removed:
             _save_quarantine_entries(kept)
     if removed:
@@ -1129,13 +1253,19 @@ def _is_reparse_point(path: Path) -> bool:
             return False
 
 
-def delete_path(path: Path, use_trash: bool, dry_run: bool, known_size: int = 0) -> Optional[str]:
+def delete_path(
+    path: Path, use_trash: bool, dry_run: bool, known_size: int = 0, report: dict | None = None
+) -> Optional[str]:
     """Returns None on success, error string otherwise.
 
     known_size: pre-computed size from the scanner (avoids redundant dir_size walk).
     """
     if _is_contents_only_dir(path):
-        return purge_dir_contents(path, dry_run, known_size)
+        return purge_dir_contents(path, dry_run, known_size, use_trash, report)
+    reason = _tree_policy_error(path)
+    if reason:
+        log_operation("delete-blocked", path, result=reason)
+        return reason
     if is_protected_path(path):
         msg = "protected path"
         log_operation("delete-blocked", path, result=msg)
@@ -1170,6 +1300,7 @@ def delete_path(path: Path, use_trash: bool, dry_run: bool, known_size: int = 0)
             msg = f"trash: {e}"
             log_operation("delete-trash", path, size=size, result=msg)
             return msg
+    size = disk_facts(path).on_disk
     journal_id = JOURNAL.begin("delete-permanent", path, size=size)
     try:
         JOURNAL.mark(journal_id, "in_progress")
@@ -1193,6 +1324,11 @@ def _delete_guard(resolved: Path) -> str:
     Called after the handle is open, so what is checked and what is deleted are
     provably the same object.
     """
+    absolute = resolved.resolve()
+    if absolute == WMOLE_DIR.resolve() or absolute.is_relative_to(QUARANTINE_DIR.resolve()):
+        return "recovery data: use the quarantine controls"
+    if absolute in (JOURNAL_DB.resolve(), SECURITY_KEY_FILE.resolve(), SECURITY_LOG_FILE.resolve()):
+        return "recovery data is protected"
     if is_protected_path(resolved):
         return "protected path"
     if is_whitelisted(resolved, load_whitelist()):
@@ -1207,6 +1343,9 @@ def permanent_delete(path: Path) -> Optional[str]:
     the guards evaluated against the handle's resolved path. Where no handle
     API exists we fall back to the name-based removal.
     """
+    reason = _tree_policy_error(path)
+    if reason:
+        return reason
     if handle_delete_supported():
         error = handle_delete(path, guard=_delete_guard)
         if error is None:
@@ -1239,6 +1378,11 @@ def trash_paths_batch(
     if not paths:
         return result
     sizes = sizes or {}
+    for p in paths:
+        reason = _delete_guard(p) if _is_contents_only_dir(p) else _tree_policy_error(p)
+        if reason:
+            result[str(p)] = reason
+    paths = [p for p in paths if str(p) not in result]
     for p in [p for p in paths if _is_contents_only_dir(p)]:
         result[str(p)] = purge_dir_contents(p, False, sizes.get(str(p), 0))
     for p in [p for p in paths if str(p) not in result and _use_quarantine(p)]:
@@ -1861,12 +2005,7 @@ def explain_item(path: Path, kind: str = "") -> Explanation:
         what, lost, kept, rebuild, regenerable = row
 
     cfg = load_config()
-    if _is_contents_only_dir(path):
-        when_freed = _FREED_IMMEDIATE
-        reversible = (
-            "No — entries older than a day are removed permanently; files in use are skipped"
-        )
-    elif _use_quarantine(path):  # same rule delete_path() applies, so the card never lies
+    if _use_quarantine(path):
         retention = max(1, int(cfg.get("quarantine_retention_days", 30)))
         when_freed = _FREED_ON_QUARANTINE_EXPIRY
         reversible = (
@@ -2263,6 +2402,10 @@ class OperationJournal:
             return 0
 
     def recover(self) -> List[dict]:
+        with _QUARANTINE_LOCK:
+            return self._recover_locked()
+
+    def _recover_locked(self) -> List[dict]:
         """Reconcile every operation that was in flight when we last died.
 
         For each open row we ask the filesystem what actually happened:
@@ -2576,6 +2719,9 @@ def _delete_one_via_handle(target: Path) -> Optional[str]:
     if handle is None:
         return err
     with handle:
+        reason = _delete_guard(handle.resolved)
+        if reason:
+            return reason
         error = handle.delete()
         if error is None:
             return None
@@ -2587,7 +2733,8 @@ def _delete_one_via_handle(target: Path) -> Optional[str]:
     if retry is None:
         return err
     with retry:
-        return retry.delete()
+        reason = _delete_guard(retry.resolved)
+        return reason or retry.delete()
 
 
 def handle_delete_supported() -> bool:
@@ -4129,7 +4276,8 @@ def read_cleanup_history(limit: int = 6) -> dict:
                     size = int(size_s)
                 except ValueError:
                     size = 0
-                total_freed += size
+                if action == "delete-permanent":
+                    total_freed += size
                 count += 1
                 last_ts = ts
                 recent.append({"ts": ts, "size": size, "path": target, "action": action})
@@ -7111,10 +7259,20 @@ def _serve_delete(req: dict, emit, cancel) -> None:
                 }
             )
             return
-        error = delete_path(path, use_trash=use_trash, dry_run=dry_run)
+        report = {"completed": True, "removed": 1, "skipped": 0, "failed": 0}
+        error = delete_path(path, use_trash=use_trash, dry_run=dry_run, report=report)
         if error:
             err += 1
-            emit({"id": rid, "ev": "item_result", "path": str(path), "ok": False, "error": error})
+            emit(
+                {
+                    "id": rid,
+                    "ev": "item_result",
+                    "path": str(path),
+                    "ok": False,
+                    "error": error,
+                    "report": report,
+                }
+            )
         else:
             ok += 1
             emit(
@@ -7125,6 +7283,8 @@ def _serve_delete(req: dict, emit, cancel) -> None:
                     "ok": True,
                     "trashed": use_trash,
                     "dry_run": dry_run,
+                    "completed": report["completed"],
+                    "report": report,
                 }
             )
         emit(
@@ -7376,7 +7536,14 @@ def _serve_remove(req: dict, emit, cancel) -> None:
     emit({"id": rid, "ev": "started", "total_hint": None})
     payload: dict = {}
     cli_remove(dry_run=dry_run, json_out=False, sink=payload)
-    emit({"id": rid, "ev": "done", "ok": True, "payload": payload})
+    emit(
+        {
+            "id": rid,
+            "ev": "done",
+            "ok": all(r["result"] == "ok" for r in payload["results"]),
+            "payload": payload,
+        }
+    )
 
 
 def _serve_cleanup_history(req: dict, emit, cancel) -> None:
@@ -7780,10 +7947,12 @@ def _file_digest(path: Path, quick: bool = False, edge: int = 65536) -> Optional
     return h.hexdigest()
 
 
-def _duplicate_groups(paths: List[Path]) -> Dict[str, List[Path]]:
+def _duplicate_groups(paths: List[Path], cancel=None) -> Dict[str, List[Path]]:
     """Group same-size files by content using a quick pre-hash pass first."""
     prelim: Dict[str, List[Path]] = {}
     for fp in paths:
+        if cancel is not None and cancel.is_set():
+            return {}
         digest = _file_digest(fp, quick=True)
         if digest is not None:
             prelim.setdefault(digest, []).append(fp)
@@ -7792,6 +7961,8 @@ def _duplicate_groups(paths: List[Path]) -> Dict[str, List[Path]]:
         if len(candidates) < 2:
             continue
         for fp in candidates:
+            if cancel is not None and cancel.is_set():
+                return {}
             digest = _file_digest(fp, quick=False)
             if digest is not None:
                 groups.setdefault(digest, []).append(fp)
@@ -7829,7 +8000,7 @@ def _serve_duplicates(req: dict, emit, cancel) -> None:
         if cancel.is_set():
             emit({"id": rid, "ev": "done", "ok": False, "cancelled": True})
             return
-        hashes = _duplicate_groups(paths)
+        hashes = _duplicate_groups(paths, cancel)
         for digest, dups in hashes.items():
             groups += 1
             for fp in dups:
@@ -8124,11 +8295,36 @@ def _serve_quarantine_verify(req: dict, emit, cancel) -> None:
     emit({"id": rid, "ev": "done", "ok": True, "payload": {"entries": rows}})
 
 
+_MUTATION_LOCK = threading.Lock()
+_MUTATING_OPS = {
+    "delete",
+    "remove",
+    "quarantine_empty",
+    "quarantine_restore",
+    "settings_set",
+    "schedule_set",
+    "schedule_clear",
+    "startup_set",
+    "startup_disable",
+    "optimize_run",
+    "uninstall_run",
+    "ports_kill",
+    "update",
+    "journal",
+}
+
+
 def _serve_handle(req: dict, emit, cancels: dict) -> None:
     """Tek bir isteği işle. emit(event_dict) çağrılır."""
     rid = req.get("id")
     op = req.get("op")
     cancel = threading.Event()
+    owns_mutation = False
+    if op in _MUTATING_OPS and not (op == "journal" and not req.get("recover")):
+        owns_mutation = _MUTATION_LOCK.acquire(blocking=False)
+        if not owns_mutation:
+            emit({"id": rid, "ev": "done", "ok": False, "error": "Another operation is running"})
+            return
     if rid is not None:
         cancels[rid] = cancel
     try:
@@ -8191,7 +8387,8 @@ def _serve_handle(req: dict, emit, cancels: dict) -> None:
         elif op == "quarantine_restore":
             _serve_quarantine_restore(req, emit, cancel)
         elif op == "quarantine_empty":
-            emit({"id": rid, "ev": "done", "ok": True, "payload": empty_quarantine()})
+            result = empty_quarantine()
+            emit({"id": rid, "ev": "done", "ok": not result["failed"], "payload": result})
         elif op == "secret_scan":
             _serve_secret_scan(req, emit, cancel)
         elif op == "supply_audit":
@@ -8212,6 +8409,8 @@ def _serve_handle(req: dict, emit, cancels: dict) -> None:
         emit({"id": rid, "ev": "done", "ok": False})
     finally:
         cancels.pop(rid, None)
+        if owns_mutation:
+            _MUTATION_LOCK.release()
 
 
 def cmd_serve() -> None:
@@ -8275,6 +8474,7 @@ def cli_clean(
     roots: Optional[List[Path]] = None,
     whitelist: Optional[List[Path]] = None,
     use_cache: bool = True,
+    yes: bool = False,
 ) -> None:
     """Headless: scan, pick the safe_default categories, ask once, delete."""
     wl = whitelist if whitelist is not None else load_whitelist()
@@ -8295,9 +8495,14 @@ def cli_clean(
         f"{len(targets)} item(s), {human_size(total)} — {'dry-run' if dry_run else 'delete to Recycle Bin'}? [y/N] ",
         end="",
     )
-    if input().strip().lower() != "y":
-        print("Cancelled.")
-        return
+    if not yes:
+        try:
+            confirmed = input().strip().lower() == "y"
+        except EOFError:
+            confirmed = False
+        if not confirmed:
+            print("Cancelled. Use --yes for non-interactive cleanup.")
+            return
     ok = err = 0
     for t in targets:
         e = delete_path(t.path, use_trash=True, dry_run=dry_run)
@@ -8306,6 +8511,12 @@ def cli_clean(
         else:
             ok += 1
     print(f"Done. {ok} ok, {err} errors.")
+    if yes and not dry_run:
+        WMOLE_DIR.mkdir(parents=True, exist_ok=True)
+        result = {"finished": time.time(), "ok": ok, "errors": err}
+        (WMOLE_DIR / "last_scheduled_cleanup.json").write_text(json.dumps(result), encoding="utf-8")
+    if err and yes:
+        raise SystemExit(1)
 
 
 def cli_categories(categories: List[Category], dry_run: bool, json_out: bool, label: str) -> None:
@@ -8702,44 +8913,10 @@ def _create_swap_batch(new_exe: Path, current_exe: Path) -> Path:
 
 
 def _launch_updated(new_path: Path, asset_name: str, latest_tag: str) -> None:
-    """Launch the downloaded update, handling both installers and raw EXEs.
-
-    For Inno Setup / MSI installers: run with silent flags and exit.
-    For raw EXEs: create a swap batch, launch it detached, and exit.
-    """
-    is_installer = _is_installer_asset(asset_name)
-    DETACHED = 0x00000008  # DETACHED_PROCESS
-
-    log_operation(
-        "auto_update", new_path, new_path.stat().st_size, f"{__version__} -> {latest_tag}"
+    """CLI has no embedded signature verifier; never execute checksum-only updates."""
+    raise RuntimeError(
+        "Automatic CLI installation is disabled. Use the signed desktop updater or install manually."
     )
-
-    if is_installer:
-        subprocess.Popen(
-            _installer_args(str(new_path)),
-            creationflags=DETACHED if os.name == "nt" else 0,
-            close_fds=True,
-        )
-        try:
-            PENDING_UPDATE_FILE.unlink(missing_ok=True)  # type: ignore[arg-type]
-        except Exception:
-            pass
-    else:
-        # Raw EXE: create swap batch and launch it
-        current_exe = Path(sys.executable) if getattr(sys, "frozen", False) else new_path
-        batch = _create_swap_batch(new_path, current_exe)
-        try:
-            PENDING_UPDATE_FILE.unlink(missing_ok=True)  # type: ignore[arg-type]
-        except Exception:
-            pass
-        subprocess.Popen(
-            ["cmd.exe", "/c", str(batch)],
-            creationflags=DETACHED if os.name == "nt" else 0,
-            close_fds=True,
-        )
-
-    sys.stderr.write(f"\n(wmole: installing update {latest_tag} in background)\n")
-    os._exit(0)
 
 
 def _asset_sha256(asset: dict) -> str:
@@ -8828,7 +9005,7 @@ def cli_update(
                 {
                     "step": "decision",
                     "code": 0,
-                    "output": f"update available: {latest_tag}; restart wmole to install automatically",
+                    "output": f"update available: {latest_tag}; use the signed desktop updater or install manually",
                 }
             )
             return _emit_update(steps, json_out, quiet, sink)
@@ -8841,7 +9018,6 @@ def cli_update(
             return _emit_update(steps, json_out, quiet, sink)
         url = asset["browser_download_url"]
         name = Path(asset["name"]).name  # strip any path components from the API value
-        expected_size = int(asset.get("size") or 0)
         expected_sha = _asset_sha256(asset)
         if not expected_sha:
             steps.append(
@@ -8869,55 +9045,23 @@ def cli_update(
             )
             return _emit_update(steps, json_out, quiet, sink)
 
-        if not yes and not json_out:
-            try:
-                ans = (
-                    input(f"Upgrade wmole {__version__} -> {latest_tag} now? [y/N] ")
-                    .strip()
-                    .lower()
-                )
-            except EOFError:
-                ans = ""
-            if ans not in ("y", "yes"):
-                steps.append({"step": "decision", "code": 1, "output": "user declined"})
-                return _emit_update(steps, json_out, quiet, sink)
+        steps.append(
+            {
+                "step": "install",
+                "code": 1,
+                "output": "Automatic CLI installation is disabled; use the signed desktop updater or install manually.",
+            }
+        )
+        return _emit_update(steps, json_out, quiet, sink)
 
-        dest = TEMP / name
-        try:
-            last_pct = [-1]
-
-            def _prog(read, total):
-                pct = int(read * 100 / total)
-                if pct != last_pct[0] and not json_out:
-                    last_pct[0] = pct
-                    sys.stdout.write(f"\rdownloading {name}: {pct:3d}%")
-                    sys.stdout.flush()
-
-            _download(url, dest, on_progress=_prog, sha256=expected_sha)
-            if not json_out:
-                sys.stdout.write("\n")
-            if expected_size > 0 and dest.stat().st_size != expected_size:
-                steps.append({"step": "download", "code": 1, "output": "size mismatch"})
-                return _emit_update(steps, json_out, quiet, sink)
-            steps.append(
-                {"step": "download", "code": 0, "output": f"{dest} ({dest.stat().st_size} bytes)"}
-            )
-        except Exception as exc:
-            steps.append({"step": "download", "code": 1, "output": str(exc)})
-            return _emit_update(steps, json_out, quiet, sink)
-
-        # Same launch path as the background updater: silent installer, or a
-        # swap batch for a raw exe. It exits this process so the exe can be replaced.
-        try:
-            steps.append(
-                {"step": "install", "code": 0, "output": "update launched in background; exiting"}
-            )
-            _emit_update(steps, json_out, quiet, sink)
-            _launch_updated(dest, name, latest_tag)
-        except Exception as exc:
-            steps.append({"step": "install", "code": 1, "output": str(exc)})
-            return _emit_update(steps, json_out, quiet, sink)
-
+    # A preview must never pull source or install dependencies.
+    if dry_run:
+        return _emit_update(
+            [{"step": "preview", "code": 0, "output": "would update source dependencies"}],
+            json_out,
+            quiet,
+            sink,
+        )
     # Source checkout path (legacy)
     if path_exists(Path(".git")):
         r = subprocess.run(
@@ -8958,92 +9102,8 @@ def _auto_update_disabled() -> bool:
 
 
 def _auto_update_worker() -> None:
-    """Background: throttle, check latest release, pre-download installer."""
-    try:
-        if _auto_update_disabled():
-            return
-        # Throttle: only hit GitHub once per AUTO_UPDATE_INTERVAL.
-        last = 0.0
-        if UPDATE_CHECK_FILE.exists():
-            try:
-                last = float(json.loads(UPDATE_CHECK_FILE.read_text(encoding="utf-8")).get("ts", 0))
-            except Exception:
-                last = 0.0
-        if time.time() - last < AUTO_UPDATE_INTERVAL:
-            return
-
-        rel = fetch_latest_release(timeout=5.0)
-        if not rel:
-            return
-
-        latest_tag = rel.get("tag_name", "")
-        if _parse_semver(latest_tag) <= _parse_semver(__version__):
-            # Up to date — clear any stale pending file.
-            try:
-                if PENDING_UPDATE_FILE.exists():
-                    PENDING_UPDATE_FILE.unlink()
-            except Exception:
-                pass
-            try:
-                WMOLE_DIR.mkdir(parents=True, exist_ok=True)
-                UPDATE_CHECK_FILE.write_text(json.dumps({"ts": time.time()}), encoding="utf-8")
-            except Exception:
-                pass
-            return
-
-        asset = _pick_update_asset(rel.get("assets", []))
-        if not asset:
-            return
-        expected_size = int(asset.get("size") or 0)
-        expected_sha = _asset_sha256(asset)
-        if not expected_sha:
-            return  # nothing to verify against: never stage an unverified exe
-        dest = TEMP / Path(asset["name"]).name  # strip any path components
-
-        # Skip download if we already have this exact installer staged.
-        if PENDING_UPDATE_FILE.exists():
-            try:
-                cur = json.loads(PENDING_UPDATE_FILE.read_text(encoding="utf-8"))
-                cur_path = Path(cur.get("path", ""))
-                if (
-                    cur.get("version") == latest_tag
-                    and cur_path.exists()
-                    and (expected_size == 0 or cur_path.stat().st_size == expected_size)
-                ):
-                    return
-            except Exception:
-                pass
-
-        if _sha256_file(dest) != expected_sha:  # not already downloaded intact
-            try:
-                _download(asset["browser_download_url"], dest, sha256=expected_sha)
-            except Exception:
-                return
-
-        try:
-            PENDING_UPDATE_FILE.write_text(
-                json.dumps(
-                    {
-                        "version": latest_tag,
-                        "name": asset["name"],
-                        "path": str(dest),
-                        "sha256": expected_sha,
-                        "downloaded_at": time.time(),
-                        "from_version": __version__,
-                    }
-                ),
-                encoding="utf-8",
-            )
-            try:
-                WMOLE_DIR.mkdir(parents=True, exist_ok=True)
-                UPDATE_CHECK_FILE.write_text(json.dumps({"ts": time.time()}), encoding="utf-8")
-            except Exception:
-                pass
-        except Exception:
-            pass
-    except Exception:
-        # Auto-update must never crash the host process.
-        pass
+    """Checksum-only CLI background installation is deliberately disabled."""
+    return
 
 
 def start_auto_update_check() -> None:
@@ -9060,40 +9120,9 @@ def start_auto_update_check() -> None:
 
 
 def apply_pending_update() -> bool:
-    """If a staged installer for a newer version exists, launch it detached.
-
-    Returns True if an installer was launched (caller should exit promptly so
-    the installer can replace the running exe).
-    """
-    if not getattr(sys, "frozen", False):
-        return False
-    # The GUI sidecar is updated by the desktop app's own (verified) updater;
-    # swapping it from here would replace a file inside the app install.
-    if sys.argv[1:2] in (["serve"], ["hook"]):
-        return False
-    if _auto_update_disabled():
-        return False
-    try:
-        if not PENDING_UPDATE_FILE.exists():
-            return False
-        info = json.loads(PENDING_UPDATE_FILE.read_text(encoding="utf-8"))
-        ver_tag = info.get("version", "")
-        if _parse_semver(ver_tag) <= _parse_semver(__version__):
-            PENDING_UPDATE_FILE.unlink(missing_ok=True)  # type: ignore[arg-type]
-            return False
-        path = Path(info.get("path", ""))
-        asset_name = info.get("name", path.name)
-        # The installer waited in %TEMP%, writable by any process of this user:
-        # re-check it against the recorded hash right before executing it.
-        if not path.exists() or not info.get("sha256") or _sha256_file(path) != info["sha256"]:
-            PENDING_UPDATE_FILE.unlink(missing_ok=True)  # type: ignore[arg-type]
-            return False
-        # Smart launch: uses setup flags for installers, batch-swap for raw EXEs
-        _launch_updated(path, asset_name, ver_tag)
-        # _launch_updated calls os._exit(0), so we never reach here
-        return True  # unreachable, but keeps type checker happy
-    except Exception:
-        return False
+    """Invalidate legacy unsigned pending updates without executing their payloads."""
+    PENDING_UPDATE_FILE.unlink(missing_ok=True)
+    return False
 
 
 def _emit_update(
@@ -9113,7 +9142,19 @@ def _emit_update(
 
 
 def cli_remove(dry_run: bool, json_out: bool, sink: Optional[dict] = None) -> None:
-    targets = [WMOLE_DIR]
+    # Never remove the vault, journal, security key or security audit trail.
+    targets = [
+        p
+        for p in (
+            CONFIG_FILE,
+            WHITELIST_FILE,
+            DENYLIST_FILE,
+            PURGE_PATHS_FILE,
+            CACHE_FILE,
+            COMPLETION_FILE,
+        )
+        if p.exists()
+    ]
     results = []
     for t in targets:
         err = delete_path(t, use_trash=False, dry_run=dry_run)
@@ -10139,6 +10180,7 @@ def main_cli() -> None:
             roots=target_paths or None,
             whitelist=whitelist,
             use_cache=not args.no_cache,
+            yes=args.yes,
         )
     elif args.mode == "purge":
         roots = target_paths or load_purge_roots() or discover_scan_roots()

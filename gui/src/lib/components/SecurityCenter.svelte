@@ -79,6 +79,7 @@
     emptyOpen = false;
     const result = await request({ op: "quarantine_empty" });
     const freed = Number((result.payload as any)?.bytes ?? 0);
+    if (!result.ok) { toast(tr("Bazı karantina öğeleri silinemedi; kayıtları korundu"), "err"); await load(); return; }
     toast(`${tr("Karantina boşaltıldı")}: ${fmt(freed)} ${tr("yer açıldı")}`, result.ok ? "ok" : "err");
     await load();
   }
@@ -122,11 +123,12 @@
   }
 
   async function saveProtection() {
-    await request({ op: "settings_set", config: {
+    const result = await request({ op: "settings_set", config: {
       quarantine_enabled: quarantineEnabled,
       quarantine_retention_days: Number(retentionDays),
       protected_processes: protectedProcesses,
     }});
+    if (!result.ok) return;
     toast(tr("Koruma ayarları kaydedildi"), "ok");
     await load();
   }

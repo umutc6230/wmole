@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { deleteSelection } from "$lib/deletion";
+  import { mutating } from "$lib/sidecar";
   import { request } from "$lib/sidecar";
   import type { SidecarEvent } from "$lib/types";
   import VirtualList from "./VirtualList.svelte";
@@ -64,7 +66,8 @@
     confirmOpen = false;
     const app = selectedApp;
     if (!app) return;
-    await request({ op: "uninstall_run", uninstall: app.uninstall, uninstall_key: app.path });
+    const done = await request({ op: "uninstall_run", uninstall: app.uninstall, uninstall_key: app.path });
+    if (!done.ok) return;
     toast(`${app.name} ${tr("kaldırıcısı başlatıldı")}`, "info");
     // kalan dosyaları tara
     leftovers = [];
@@ -88,20 +91,12 @@
       toast(tr("Önce silinecek dosya seç (registry anahtarları elle)"), "info");
       return;
     }
-    let ok = 0,
-      err = 0;
-    await request({ op: "delete", targets, permanent: false }, (e) => {
-      if (e.ev === "item_result") e.ok ? ok++ : err++;
-      if (e.ev === "progress")
-        progress = {
-          done: e.done as number,
-          total: e.total as number,
-          label: String(e.label ?? ""),
-        };
+    if ($mutating) return;
+    const removed = await deleteSelection(targets, false, false, e => {
+      if (e.ev === "progress") progress = { done: Number(e.done), total: Number(e.total), label: String(e.label ?? "") };
     });
-    leftovers = leftovers.filter((l) => !targets.includes(l.path));
+    leftovers = leftovers.filter(l => !removed.has(l.path));
     progress = { done: 0, total: 0, label: "" };
-    toast(`${ok} ${tr("kalıntı silindi")}${err ? `, ${err} ${tr("hata")}` : ""}`, err ? "err" : "ok");
   }
 </script>
 
