@@ -110,7 +110,7 @@ class WmoleBehaviorTests(unittest.TestCase):
 
     def test_protected_path_blocks_drive_root_and_windows_dir(self):
         self.assertTrue(mole.is_protected_path(Path("C:\\")))
-        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\Temp")))
+        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\System32")))
         self.assertFalse(
             mole.is_protected_path(Path(r"C:\Users\example\AppData\Local\Temp\wmole-safe"))
         )
@@ -217,7 +217,7 @@ class WmoleBehaviorTests(unittest.TestCase):
         allowed = mole.Item(
             path=Path(r"C:\Users\example\AppData\Local\Temp\cache"), size=10, selected=True
         )
-        blocked = mole.Item(path=Path(r"C:\Windows\Temp"), size=20, selected=True)
+        blocked = mole.Item(path=Path(r"C:\Windows\System32"), size=20, selected=True)
         cat = mole.Category(key="test", title="Test", description="", items=[allowed, blocked])
 
         result = mole.collect_selected_targets([cat], estimated=True)
@@ -1406,21 +1406,41 @@ class DuplicateHashTests(unittest.TestCase):
         self.assertEqual(shared, {"Code"})
         self.assertEqual(alone, {"Code", "Microsoft"})
 
-    def test_only_contents_of_system_cache_dirs_are_deletable(self):
-        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\Temp")))
+    def test_system_cache_dirs_are_cleanable_but_rest_of_windows_is_not(self):
+        self.assertFalse(mole.is_protected_path(Path(r"C:\Windows\Temp")))
         self.assertFalse(mole.is_protected_path(Path(r"C:\Windows\Temp\junk.tmp")))
         self.assertFalse(
             mole.is_protected_path(Path(r"C:\Windows\SoftwareDistribution\Download\abc"))
         )
         self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\Temporary")))
+        self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\SoftwareDistribution")))
         self.assertTrue(mole.is_protected_path(Path(r"C:\Windows\System32\drivers")))
 
-    def test_system_temp_category_lists_children_not_the_root(self):
+    def test_temp_root_is_emptied_not_removed(self):
         with tempfile.TemporaryDirectory() as td:
-            (Path(td) / "a.tmp").write_text("x", encoding="utf-8")
-            (Path(td) / "sub").mkdir()
-            items = mole.fixed_category_items("win-temp", Path(td), selected=True)
-        self.assertEqual(sorted(i.path.name for i in items), ["a.tmp", "sub"])
+            temp = Path(td) / "Temp"
+            temp.mkdir()
+            old_file = temp / "old.tmp"
+            old_dir = temp / "olddir"
+            fresh = temp / "fresh.tmp"
+            busy = temp / "busy.tmp"
+            old_dir.mkdir()
+            for f in (old_file, old_dir / "x.bin", fresh, busy):
+                f.write_text("data", encoding="utf-8")
+            stale = mole.time.time() - 3 * 86400
+            for f in (old_file, old_dir, busy):
+                os.utime(f, (stale, stale))
+            with (
+                mock.patch.object(mole, "TEMP", temp),
+                mock.patch.object(mole, "log_operation"),
+                open(busy, "r+") as handle,
+            ):
+                self.assertTrue(mole._is_contents_only_dir(temp))
+                self.assertIsNone(mole.delete_path(temp, use_trash=True, dry_run=True))
+                self.assertTrue(old_file.exists())  # dry run touches nothing
+                self.assertIsNone(mole.delete_path(temp, use_trash=True, dry_run=False))
+                handle.read()
+            self.assertEqual(sorted(p.name for p in temp.iterdir()), ["busy.tmp", "fresh.tmp"])
 
     def test_other_drive_goes_to_recycle_bin_not_quarantine(self):
         with (

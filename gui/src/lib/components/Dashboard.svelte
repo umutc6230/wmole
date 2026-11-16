@@ -10,7 +10,12 @@
   import { t, tr } from "$lib/i18n";
   import { theme } from "$lib/theme";
 
+  let { onNavigate = () => {} }: { onNavigate?: (view: string) => void } = $props();
+
   let s = $state<Record<string, any>>({});
+  // Özet karoları için: açık başlangıç girdisi sayısı ve karantina boyutu.
+  let startupOn = $state<number | null>(null);
+  let quarantine = $state<{ count: number; bytes: number } | null>(null);
   let hist = $state<Record<string, any>>({});
   let timer: ReturnType<typeof setInterval>;
 
@@ -73,6 +78,28 @@
     if (done.payload) hist = done.payload as Record<string, any>;
   }
 
+  async function loadSummary() {
+    let on = 0;
+    await request({ op: "startup_list" }, (e: SidecarEvent) => {
+      if (e.ev === "item" && (e as any).enabled !== false) on++;
+    });
+    startupOn = on;
+    const sec = await request({ op: "security_overview", limit: 1 });
+    const rows = ((sec.payload as any)?.quarantine ?? []) as { size?: number }[];
+    quarantine = { count: rows.length, bytes: rows.reduce((a, r) => a + (r.size || 0), 0) };
+  }
+
+  // Tek cümlelik durum: en acil sorun neyse onu söyler.
+  let verdict = $derived(
+    (s.disk_percent ?? 0) >= 90
+      ? { tone: "var(--danger)", text: "Disk neredeyse dolu" }
+      : (s.memory_percent ?? 0) >= 90
+        ? { tone: "var(--warn)", text: "Bellek kullanımı yüksek" }
+        : (s.disk_percent ?? 0) >= 75
+          ? { tone: "var(--warn)", text: "Disk dolmaya başladı" }
+          : { tone: "var(--ok)", text: "Sistem iyi durumda" },
+  );
+
   async function quickScan() {
     scanItems = [];
     scanning = true;
@@ -107,11 +134,13 @@
     toast(msg, err ? "err" : "ok");
     if (ok > 0) notify("wmole", msg);
     loadHistory();
+    loadSummary();
   }
 
   onMount(() => {
     poll();
     loadHistory();
+    loadSummary();
     timer = setInterval(poll, 2000);
   });
   onDestroy(() => clearInterval(timer));
@@ -119,6 +148,59 @@
 
 <div class="dash">
   <h2>{$t("Gösterge Paneli")}</h2>
+
+  <!-- Akıllı tarama: tek cümlelik durum + tek birincil eylem + tıklanabilir özet karoları. -->
+  <section class="hero surface">
+    <div class="hero-main">
+      <span class="verdict" style="--tone:{verdict.tone}">{$t(verdict.text)}</span>
+      <p class="hero-sub">
+        {#if scanning}
+          {$t("Taranıyor…")}
+        {:else if scanned && chosen.length}
+          {$t("Geri kazanılabilir:")} <strong>{fmt(reclaimable)}</strong>
+        {:else if scanned}
+          {$t("✓ Temizlenecek önemli bir şey yok")}
+        {:else}
+          {$t("Güvenli temizlik adaylarını tara ve tek tıkla temizle.")}
+        {/if}
+      </p>
+      <button
+        class="cta"
+        disabled={scanning}
+        onclick={() => (scanned && chosen.length ? (confirmOpen = true) : quickScan())}
+      >
+        {scanning
+          ? $t("Taranıyor…")
+          : scanned && chosen.length
+            ? `${$t("Hızlı Temizle")} (${chosen.length})`
+            : scanned
+              ? $t("Yeniden Tara")
+              : $t("Hızlı Tara")}
+      </button>
+    </div>
+    <div class="hero-tiles">
+      <button class="stat" onclick={quickScan} disabled={scanning}>
+        <span>{$t("Geri kazanılabilir")}</span>
+        <strong style="color:var(--ok)">{scanned ? fmt(reclaimable) : "—"}</strong>
+        <em>{$t(scanned ? "seçili öğeler" : "taramak için tıkla")}</em>
+      </button>
+      <button class="stat" onclick={() => onNavigate("Analyze")}>
+        <span>{$t("Boş alan")}</span>
+        <strong style="color:{color(s.disk_percent ?? 0)}">{s.disk_free ? fmt(s.disk_free) : "—"}</strong>
+        <em>{$t("en büyük klasörleri gör")}</em>
+      </button>
+      <button class="stat" onclick={() => onNavigate("Startup")}>
+        <span>{$t("Başlangıç")}</span>
+        <strong>{startupOn ?? "—"}</strong>
+        <em>{$t("açılışta çalışan program")}</em>
+      </button>
+      <button class="stat" onclick={() => onNavigate("Security")}>
+        <span>{$t("Karantina")}</span>
+        <strong>{quarantine ? fmt(quarantine.bytes) : "—"}</strong>
+        <em>{quarantine?.count ?? 0} {$t("öğe geri alınabilir")}</em>
+      </button>
+    </div>
+  </section>
 
   <!-- Metreler. Sunum biçimi aktif layout temasına göre değişir:
        çubuk (Fluent/Linear), döşeme (Cards/Bento), kadran (HUD). -->
@@ -187,20 +269,17 @@
     {/if}
   </div>
 
-  <!-- Temizlik Analizi / Hızlı Temizle -->
+  <!-- Tarama sonucu: silmeden önce gözden geçir. Yalnız sonuç varken görünür;
+       başlatma eylemi yukarıdaki kahraman alanında. -->
+  {#if scanned && scanItems.length}
   <section class="card">
     <h3>{$t("Temizlik Analizi")}</h3>
-    {#if scanning}
-      <p class="muted">⟳ {$t("Taranıyor…")} {fmt(reclaimable)}</p>
-    {:else if scanned && scanItems.length}
+    {#if scanned && scanItems.length}
       <p>
-        ♻ {$t("Geri kazanılabilir:")} <strong class="green">{fmt(reclaimable)}</strong>
+        {$t("Geri kazanılabilir:")} <strong class="green">{fmt(reclaimable)}</strong>
         <span class="muted">({chosen.length}/{scanItems.length} {$t("seçili")})</span>
       </p>
       <div class="row">
-        <button class="primary" onclick={() => (confirmOpen = true)} disabled={!chosen.length}>
-          {$t("Hızlı Temizle")} ({chosen.length})
-        </button>
         <button onclick={() => setAll(true)}>{$t("Tümünü Seç")}</button>
         <button onclick={() => setAll(false)}>{$t("Hiçbiri")}</button>
         <button onclick={quickScan}>{$t("Yeniden Tara")}</button>
@@ -217,14 +296,9 @@
           {/snippet}
         </VirtualList>
       </div>
-    {:else if scanned}
-      <p class="green">{$t("✓ Temizlenecek önemli bir şey yok")}</p>
-      <button onclick={quickScan}>{$t("Yeniden Tara")}</button>
-    {:else}
-      <p class="muted">{$t("Güvenli temizlik adaylarını tara ve tek tıkla temizle.")}</p>
-      <button class="primary" onclick={quickScan}>{$t("Hızlı Tara")}</button>
     {/if}
   </section>
+  {/if}
 
   <!-- Temizlik Geçmişi -->
   <section class="card">
@@ -271,6 +345,63 @@
   .dash { display: flex; flex-direction: column; gap: var(--gap); font-family: var(--font); font-size: var(--fs); }
   h2 { margin: 0; color: var(--fg); font-size: var(--fs-lg); }
   h3 { margin: 0 0 var(--gap); color: var(--accent); font-size: var(--fs); }
+  /* Kahraman alanı: solda durum + birincil eylem, sağda özet karoları. */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 2fr;
+    gap: var(--pad);
+    padding: calc(var(--pad) * 1.4);
+    align-items: center;
+  }
+  .hero-main { display: flex; flex-direction: column; gap: var(--gap); align-items: flex-start; }
+  .verdict {
+    font-size: calc(var(--fs-lg) * 1.35);
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--fg);
+    padding-left: 12px;
+    border-left: 4px solid var(--tone);
+  }
+  .hero-sub { margin: 0; color: var(--muted); }
+  .hero-sub strong { color: var(--ok); }
+  button.cta {
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 700;
+    font-size: var(--fs-lg);
+    padding: 10px 26px;
+    border-radius: 999px;
+    transition: filter 0.15s, transform 0.15s;
+  }
+  button.cta:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+  .hero-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
+  button.stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: var(--pad);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-align: left;
+    min-width: 0;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  button.stat:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+  .stat span { color: var(--muted); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat strong {
+    font-size: calc(var(--fs-lg) * 1.4);
+    line-height: 1.1;
+    font-family: var(--font-mono);
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  .stat em { color: var(--faint); font-size: var(--fs-sm); font-style: normal; }
+  @media (max-width: 1000px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
   .meters {
     padding: var(--pad);
     display: flex; flex-direction: column; gap: calc(var(--gap) * 0.7);
@@ -336,7 +467,6 @@
     background: var(--btn); color: var(--fg); border: none; padding: 6px 14px;
     border-radius: var(--radius); cursor: pointer; font-family: var(--font); font-size: var(--fs);
   }
-  button.primary { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
   .histlist { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 3px; }
   .histlist li { display: flex; gap: 10px; font-size: 12px; }
   .histlist .green { min-width: 80px; text-align: right; }

@@ -60,7 +60,7 @@
     <Sidebar {active} onSelect={(v) => (active = v)} />
     <main class="content">
       {#if active === "Dashboard"}
-        <Dashboard />
+        <Dashboard onNavigate={(v) => (active = v)} />
       {:else if active === "Analyze"}
         <Analyze />
       {:else if scanModes.includes(active)}
@@ -319,15 +319,40 @@
   :global(html[data-theme="bento"] .surface) {
     border-width: 1px;
   }
-  /* Scrollbar'ı gizle (kaydırma çalışmaya devam eder) */
+  /* İnce, temaya uyan kaydırma çubuğu. Tamamen gizliyken bir listenin
+   * kaydırılabildiği anlaşılmıyordu. */
   :global(*) {
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
   }
   :global(*::-webkit-scrollbar) {
-    width: 0;
-    height: 0;
-    display: none; /* Chromium/WebView2 */
+    width: 8px;
+    height: 8px;
+  }
+  :global(*::-webkit-scrollbar-thumb) {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  :global(*::-webkit-scrollbar-thumb:hover) {
+    background: var(--faint);
+  }
+  :global(*::-webkit-scrollbar-track) {
+    background: transparent;
+  }
+  /* Klavye ile gezinirken odak her temada görünür olsun. */
+  :global(:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  :global(button:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(*) {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
   }
   .app {
     display: flex;

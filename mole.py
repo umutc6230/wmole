@@ -519,6 +519,52 @@ CLEANABLE_SYSTEM_DIRS = (
 )
 
 
+def _is_contents_only_dir(path: Path) -> bool:
+    """Temp/cache roots that are cleaned by emptying them, never by removing
+    (or quarantining) the folder itself: it always holds files in use."""
+    raw = os.path.abspath(path).rstrip("\\/").lower()
+    return raw == str(TEMP).rstrip("\\/").lower() or raw in CLEANABLE_SYSTEM_DIRS
+
+
+# Younger temp entries may belong to an installer or build that is still running.
+TEMP_MIN_AGE_SECONDS = 24 * 3600
+
+
+def purge_dir_contents(path: Path, dry_run: bool, known_size: int = 0) -> Optional[str]:
+    """Empty a temp/cache root: permanent, entry by entry, skipping anything in
+    use or younger than a day. Temp junk is not worth a 30-day quarantine, and
+    one row per entry (thousands in %TEMP%) made scans crawl."""
+    cutoff = time.time() - TEMP_MIN_AGE_SECONDS
+    removed = failed = 0
+    try:
+        children = list(path.iterdir())
+    except OSError as exc:
+        return str(exc)
+    for child in children:
+        try:
+            if child.lstat().st_mtime > cutoff:
+                continue
+            if dry_run:
+                removed += 1
+            elif child.is_dir() and not _is_reparse_point(child):
+                shutil.rmtree(child)
+                removed += 1
+            else:
+                try:
+                    child.unlink()
+                except (IsADirectoryError, PermissionError):
+                    os.rmdir(child)  # junction/dir link: remove the link only
+                removed += 1
+        except OSError:
+            failed += 1  # in use: leave it
+    action = "delete-dry-run" if dry_run else "delete-permanent"
+    if failed and not removed:
+        log_operation(action, path, result="all entries in use")
+        return "all entries in use"
+    log_operation(action, path, size=known_size, result="ok")
+    return None
+
+
 def _inside_cleanable_system_dir(raw: str) -> bool:
     """`raw` is a resolved, lowercased path strictly inside one of those dirs."""
     return any(raw.startswith(base + "\\") for base in CLEANABLE_SYSTEM_DIRS)
@@ -666,8 +712,8 @@ def is_protected_path(path: Path) -> bool:
         return True
     if path_exists(p / ".git"):
         return True
-    if _inside_cleanable_system_dir(raw):
-        return False
+    if _inside_cleanable_system_dir(raw) or raw in CLEANABLE_SYSTEM_DIRS:
+        return False  # "deleting" such a root only empties it (purge_dir_contents)
     return any(raw == base or raw.startswith(base + "\\") for base in protected)
 
 
@@ -725,7 +771,7 @@ class ScanFilter:
         for d in self.denylist:
             if raw == d or raw.startswith(d + "\\"):
                 return True
-        if not _inside_cleanable_system_dir(raw) and any(
+        if not (_inside_cleanable_system_dir(raw) or raw in CLEANABLE_SYSTEM_DIRS) and any(
             raw == base or raw.startswith(base + "\\") for base in self.protected
         ):
             return True
@@ -1088,6 +1134,8 @@ def delete_path(path: Path, use_trash: bool, dry_run: bool, known_size: int = 0)
 
     known_size: pre-computed size from the scanner (avoids redundant dir_size walk).
     """
+    if _is_contents_only_dir(path):
+        return purge_dir_contents(path, dry_run, known_size)
     if is_protected_path(path):
         msg = "protected path"
         log_operation("delete-blocked", path, result=msg)
@@ -1191,7 +1239,9 @@ def trash_paths_batch(
     if not paths:
         return result
     sizes = sizes or {}
-    for p in [p for p in paths if _use_quarantine(p)]:
+    for p in [p for p in paths if _is_contents_only_dir(p)]:
+        result[str(p)] = purge_dir_contents(p, False, sizes.get(str(p), 0))
+    for p in [p for p in paths if str(p) not in result and _use_quarantine(p)]:
         result[str(p)] = quarantine_path(p, size=sizes.get(str(p), 0))
     paths = [p for p in paths if str(p) not in result]
     if not paths:
@@ -1811,7 +1861,12 @@ def explain_item(path: Path, kind: str = "") -> Explanation:
         what, lost, kept, rebuild, regenerable = row
 
     cfg = load_config()
-    if _use_quarantine(path):  # same rule delete_path() applies, so the card never lies
+    if _is_contents_only_dir(path):
+        when_freed = _FREED_IMMEDIATE
+        reversible = (
+            "No — entries older than a day are removed permanently; files in use are skipped"
+        )
+    elif _use_quarantine(path):  # same rule delete_path() applies, so the card never lies
         retention = max(1, int(cfg.get("quarantine_retention_days", 30)))
         when_freed = _FREED_ON_QUARANTINE_EXPIRY
         reversible = (
@@ -2900,14 +2955,6 @@ def build_fixed_path_categories() -> List[tuple]:
 
 def fixed_category_items(key: str, path: Path, selected: bool) -> List[Item]:
     out: List[Item] = []
-    if key in ("user-temp", "win-temp", "win-update", "delivery-optimization"):
-        # One item per child: these roots always hold files in use (and the
-        # system ones are protected folders), so deleting the root as a single
-        # unit failed every time.
-        try:
-            return [Item(path=child, selected=selected) for child in path.iterdir()]
-        except OSError:
-            return out
     if key == "jetbrains":
         # JetBrains Toolbox installs the IDEs themselves under this folder, so
         # only each product's cache/log dirs are offered, never the whole tree.
